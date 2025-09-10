@@ -3,8 +3,8 @@ frontend:
   phases:
     preBuild:
       commands:
-        - apt-get update
-        - apt-get install -y xz-utils curl git unzip
+        - yum update -y
+        - yum install -y xz curl git unzip which
         - curl -L https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.4-stable.tar.xz -o flutter.tar.xz
         - tar -xJf flutter.tar.xz
         - export PATH="$PWD/flutter/bin:$PATH"
