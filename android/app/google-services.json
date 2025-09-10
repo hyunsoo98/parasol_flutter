@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1076464714879",
+    "project_id": "parkinson-8e5c0",
+    "storage_bucket": "parkinson-8e5c0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1076464714879:android:dc1c8fd0916c7b3b3aab4a",
+        "android_client_info": {
+          "package_name": "com.android.parkinson"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1076464714879-kiokfhrhn8jf4o71ecopgtj8emvqu2jl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.android.parkinson",
+            "certificate_hash": "4bcef562fb82e184f20ceb870152d3e1e26e8a13"
+          }
+        },
+        {
+          "client_id": "1076464714879-69up7ip0kp8pvc928n05g3cm5vb2i1op.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJZTlZuBARPpezg6Ui_BhN5x4qe5yjdEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1076464714879-69up7ip0kp8pvc928n05g3cm5vb2i1op.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

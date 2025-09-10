@@ -1,0 +1,127 @@
+name: parkinson
+description: "A Flutter application for Parkinson's API"
+
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+# Dependencies specify other packages that your package needs in order to work.
+dependencies:
+  flutter:
+    sdk: flutter
+    
+
+  # Google Sign In
+  google_sign_in: ^6.1.6
+  firebase_core: ^2.24.2
+  firebase_auth: ^4.15.3
+
+  # HTTP 통신
+  http: ^1.1.2
+  dio: ^5.4.0
+
+  # 상태 관리
+  provider: ^6.1.1
+
+  # UI 관련
+  cupertino_icons: ^1.0.6
+  flutter_svg: ^2.0.9
+
+  # 기타 유틸리티
+  shared_preferences: ^2.2.2
+  fluttertoast: ^8.2.4
+  
+  # 카메라 및 마이크 권한
+  permission_handler: ^11.0.1
+  camera: ^0.10.5+5
+  audio_waveforms: ^1.0.5
+  
+  # 애니메이션
+  lottie: ^2.7.0
+  
+  # MediaPipe 및 컴퓨터 비전
+  google_mlkit_face_detection: ^0.11.0
+  google_mlkit_face_mesh_detection: ^0.1.0
+  google_mlkit_commons: ^0.7.1
+  
+  # 오디오 녹음 및 재생
+  flutter_sound: ^9.2.13
+  path_provider: ^2.1.2
+  
+  # 타이머 및 애니메이션
+  circular_countdown_timer: ^0.2.3
+  
+  # TTS 및 볼륨 제어
+  flutter_tts: ^3.8.5
+  volume_controller: ^2.0.7
+  
+  # AWS Amplify
+  amplify_flutter: ^2.0.0
+  amplify_auth_cognito: ^2.0.0
+  amplify_storage_s3: ^2.0.0
+  amplify_api: ^2.0.0
+  amplify_datastore: ^2.0.0
+  
+  # 화면 녹화 - 간단한 구현으로 대체
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^3.0.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # To add assets to your application, add an assets section, like this:
+  assets:
+    - assets/images/
+    - assets/icons/
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/assets-and-images/#resolution-aware
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/assets-and-images/#from-packages
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro-Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/custom-fonts/#from-packages
