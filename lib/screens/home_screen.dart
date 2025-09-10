@@ -1,7 +1,7 @@
 // lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
+import '../providers/auth_provider.dart' as local_auth;
 import 'phone_mount_guide_screen.dart';
 import '../services/diagnosis_flow_service.dart';
 import 'my_page_screen.dart';
@@ -11,7 +11,7 @@ class HomeScreen extends StatelessWidget {
 
       @override
       Widget build(BuildContext context) {
-            return Consumer<AuthProvider>(
+            return Consumer<local_auth.CustomAuthProvider>(
                   builder: (context, authProvider, child) {
                         final user = authProvider.user;
 
@@ -61,10 +61,10 @@ class HomeScreen extends StatelessWidget {
                                                                         child: CircleAvatar(
                                                                               radius: 30,
                                                                               backgroundColor: const Color(0xFF2F3DA3),
-                                                                              backgroundImage: user?.photoURL != null
-                                                                                  ? NetworkImage(user!.photoURL!)
+                                                                              backgroundImage: user?['photoURL'] != null
+                                                                                  ? NetworkImage(user!['photoURL']!)
                                                                                   : null,
-                                                                              child: user?.photoURL == null
+                                                                              child: user?['photoURL'] == null
                                                                                   ? Text(
                                                                                     _getUserInitial(user),
                                                                                     style: const TextStyle(
@@ -91,7 +91,7 @@ class HomeScreen extends StatelessWidget {
                                                                                     ),
                                                                                     const SizedBox(height: 4),
                                                                                     Text(
-                                                                                          user?.email ?? '',
+                                                                                          user?['email'] ?? '',
                                                                                           style: TextStyle(
                                                                                                 fontSize: 14,
                                                                                                 color: Colors.grey[600],
@@ -266,7 +266,7 @@ class HomeScreen extends StatelessWidget {
                                     TextButton(
                                           onPressed: () {
                                                 Navigator.of(context).pop();
-                                                Provider.of<AuthProvider>(context, listen: false).signOut();
+                                                Provider.of<local_auth.CustomAuthProvider>(context, listen: false).signOut();
                                           },
                                           child: const Text('로그아웃'),
                                     ),
@@ -282,7 +282,7 @@ class HomeScreen extends StatelessWidget {
           return user.displayName!;
         }
         
-        if (user?.email != null && user!.email!.isNotEmpty) {
+        if (user?['email'] != null && user!.email!.isNotEmpty) {
           final emailParts = user.email!.split('@');
           if (emailParts.isNotEmpty && emailParts[0].isNotEmpty) {
             return emailParts[0];
@@ -298,7 +298,7 @@ class HomeScreen extends StatelessWidget {
           return user.displayName![0].toUpperCase();
         }
         
-        if (user?.email != null && user!.email!.isNotEmpty) {
+        if (user?['email'] != null && user!.email!.isNotEmpty) {
           return user.email![0].toUpperCase();
         }
         

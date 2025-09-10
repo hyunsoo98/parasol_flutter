@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart';
+// import 'package:firebase_auth/firebase_auth.dart'; - 제거됨
 
 // 개발 환경에 맞게 수정
 const String baseUrl = 'https://8426dcee48d2.ngrok-free.app';
@@ -20,8 +20,9 @@ class ApiService {
 
   Future<String?> _getAuthToken() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      return await user?.getIdToken(true);
+      // final user = FirebaseAuth.instance.currentUser; - 제거됨
+      // return await user?.getIdToken(true); - 제거됨
+      return null; // 임시로 null 반환
     } catch (_) {
       return null;
     }

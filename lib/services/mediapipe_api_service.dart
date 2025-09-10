@@ -2,7 +2,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart';
+// import 'package:firebase_auth/firebase_auth.dart'; - 제거됨
 import '../models/diagnosis_result.dart';
 
 class MediaPipeApiService {
@@ -28,7 +28,8 @@ class MediaPipeApiService {
   // Firebase 인증 토큰
   Future<String?> _getAuthToken() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      // final user = FirebaseAuth.instance.currentUser; - 제거됨
+    final user = null; // 임시
       return await user?.getIdToken(true); // 갱신
     } catch (e) {
       print('토큰 가져오기 실패: $e');

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
+import '../providers/auth_provider.dart' as local_auth;
 
 class MyPageScreen extends StatelessWidget {
   const MyPageScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AuthProvider>(
+    return Consumer<local_auth.CustomAuthProvider>(
       builder: (context, authProvider, child) {
         final user = authProvider.user;
 
@@ -307,7 +307,7 @@ class MyPageScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLogoutButton(BuildContext context, AuthProvider authProvider) {
+  Widget _buildLogoutButton(BuildContext context, local_auth.CustomAuthProvider authProvider) {
     return Container(
       width: double.infinity,
       child: OutlinedButton(
@@ -340,7 +340,7 @@ class MyPageScreen extends StatelessWidget {
     );
   }
 
-  void _showLogoutDialog(BuildContext context, AuthProvider authProvider) {
+  void _showLogoutDialog(BuildContext context, local_auth.CustomAuthProvider authProvider) {
     showDialog(
       context: context,
       builder: (BuildContext context) {

@@ -64,7 +64,7 @@ class FaceMeshIrisService {
     _frameCount++;
 
     try {
-      // 성능 최적화: 매 2프레임마다 처리 (15fps로 안정화)
+      // 성능 ㅂ  적화: 매 2프레임마다 처리 (15fps로 안정화)
       if (_frameCount % 2 != 0) {
         _isProcessing = false;
         return;

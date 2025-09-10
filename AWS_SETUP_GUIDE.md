@@ -36,7 +36,7 @@ Flutter App → API Gateway → Lambda → DynamoDB
 aws configure
 # Access Key ID: [관리자 제공]
 # Secret Access Key: [관리자 제공]
-# Default region: ap-northeast-2
+# Default region: us-west-1
 # Default output format: json
 ```
 
@@ -67,8 +67,8 @@ aws configure
 2. "버킷 만들기" 클릭
 
 **버킷 설정:**
-- 버킷 이름: `parkinson-app-storage-[고유번호]`
-- 리전: `ap-northeast-2` (서울)
+- 버킷 이름: `seoul-ht-09` (이미 생성됨)
+- 리전: `us-west-1` (캘리포니아)
 - 버킷 버전 관리: 비활성화
 - 퍼블릭 액세스 차단: 모든 퍼블릭 액세스 차단
 
@@ -204,59 +204,153 @@ DYNAMODB_TABLE=parkinson-analysis
 ### 5.4 API 배포
 1. "작업" → "API 배포"
 2. 배포 스테이지: `dev`
-3. 호출 URL 기록: `https://[api-id].execute-api.ap-northeast-2.amazonaws.com/dev`
+3. 호출 URL 기록: `https://[api-id].execute-api.us-west-1.amazonaws.com/dev`
 
 ## 🚀 6단계: AWS Amplify 호스팅 설정
 
 ### 6.1 Amplify 앱 생성
 1. [Amplify 콘솔](https://console.aws.amazon.com/amplify/) 접속
-2. "새 앱" → "웹 앱 호스팅"
-3. 소스: "빌드 아티팩트 업로드" 선택
+2. "새 앱" → "웹 앱 호스팅" 클릭
+3. **소스 선택**: "빌드 아티팩트를 업로드하지 않고 배포" 선택
+4. **앱 이름**: `parkinson-app` 입력
+5. **환경 이름**: `main` (기본값)
+6. "앱 만들기" 클릭
 
-### 6.2 Flutter 웹 빌드
+### 6.2 Flutter 웹 빌드 및 배포
 ```bash
-# Flutter 웹 빌드
+# 1. Flutter 웹 빌드
 flutter build web
 
-# build/web 폴더를 ZIP으로 압축
-# Amplify에 업로드
+# 2. build/web 폴더 확인
+ls build/web
+
+# 3. build/web 폴더 전체를 ZIP으로 압축
+# Windows: build/web 폴더 내의 모든 파일을 선택하여 압축 (폴더 자체가 아님)
+# 압축 파일명: parkinson-web.zip
 ```
 
-### 6.3 환경 변수 설정
-Amplify 앱 → 환경 변수에서 설정:
-```
-API_ENDPOINT=https://[api-id].execute-api.ap-northeast-2.amazonaws.com/dev
-S3_BUCKET=parkinson-app-storage-[고유번호]
-AWS_REGION=ap-northeast-2
+### 6.3 수동 배포
+1. Amplify 앱 → **호스팅** → **배포** 탭
+2. "아티팩트 끌어서 놓기" 영역에 `parkinson-web.zip` 업로드
+3. 배포 완료까지 2-3분 대기
+4. **앱 URL** 확인 및 기록: `https://main.d27qlm0640fgud.amplifyapp.com`
+
+### 6.4 환경 변수 설정
+1. Amplify 앱 → **호스팅** → **환경 변수** 탭
+2. "변수 관리" 클릭
+3. 다음 환경 변수 추가:
+
+**현재 Amplify 앱 ID: `d27qlm0640fgud`**
+
+| 변수 | 값 | 브랜치 | 설명 |
+|------|----|----|------|
+| `API_ENDPOINT` | `https://[your-api-gateway-id].execute-api.us-west-1.amazonaws.com/dev` | `main` | API Gateway 배포 후 실제 ID로 교체 |
+| `S3_BUCKET` | `seoul-ht-09` | `main` | 실제 S3 버킷명 |
+| `REGION` | `us-west-1` | `main` | 캘리포니아 리전 (AWS_ 접두사 제거) |
+
+**예시 실제 값:**
+- API_ENDPOINT: `https://abc123xyz9.execute-api.us-west-1.amazonaws.com/dev`
+- S3_BUCKET: `seoul-ht-09`
+
+4. "저장" 클릭
+5. **재배포 필수**: "작업" → "앱 재배포" 클릭 (환경 변수 적용을 위해)
+
+### 6.5 빌드 설정 (향후 자동 배포용)
+향후 Git 연동 시를 위한 빌드 설정:
+1. **앱 설정** → **빌드 설정** 탭
+2. **amplify.yml** 설정:
+```yaml
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - flutter pub get
+    build:
+      commands:
+        - flutter build web --release
+  artifacts:
+    baseDirectory: build/web
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - .pub-cache/**/*
 ```
 
 ## ⚙️ 7단계: Flutter 앱 설정
 
-### 7.1 API 엔드포인트 설정
-`lib/config/aws_config.dart` 생성:
-```dart
-class AWSConfig {
-  static const String apiEndpoint = 'https://[api-id].execute-api.ap-northeast-2.amazonaws.com/dev';
-  static const String s3Bucket = 'parkinson-app-storage-[고유번호]';
-  static const String region = 'ap-northeast-2';
-}
+### 7.1 Flutter 웹 빌드 오류 해결
+
+**Amplify 의존성 제거 (이미 완료):**
+- `main.dart`에서 Amplify 관련 import 제거
+- `CustomAuthProvider`로 이름 충돌 해결
+- HTTP 기반 API 서비스로 변경
+
+**웹 빌드 전 필수 확인사항:**
+```bash
+# 1. pubspec.yaml에서 web 지원 패키지 확인
+flutter pub get
+
+# 2. 웹 빌드 테스트
+flutter build web --web-renderer html
+
+# 3. 빌드 오류 없는지 확인
+flutter analyze
 ```
 
-### 7.2 HTTP 클라이언트 설정
-`lib/services/api_service.dart`에서 API Gateway 연동
+### 7.2 API 엔드포인트 설정 (자동 완료)
+`lib/config/aws_config.dart` 이미 생성됨:
+- 웹/모바일 환경 변수 자동 감지
+- Amplify 환경 변수와 호환
+- API 엔드포인트 자동 구성
 
-### 7.3 파일 업로드 설정
-S3 직접 업로드 또는 API Gateway를 통한 업로드 구성
+### 7.3 실제 값으로 설정 변경
+배포 후 `lib/config/aws_config.dart`에서 실제 값으로 교체:
+```dart
+// 실제 API Gateway ID로 교체
+static const String apiEndpoint = 'https://abc123def4.execute-api.us-west-1.amazonaws.com/dev';
+
+// 실제 S3 버킷명으로 교체  
+static const String s3Bucket = 'parkinson-app-storage-20241210';
+```
+
+### 7.4 웹 빌드 최종 확인
+```bash
+# 모든 오류 해결 후 최종 빌드
+flutter clean
+flutter pub get  
+flutter build web --release
+
+# 빌드 성공 확인
+ls build/web/
+```
+
+**문제 발생 시 해결책:**
+- `Type 'PromiseJsImpl' not found` → Firebase 의존성 제거로 해결됨
+- `Method not found: 'dartify'` → Firebase 의존성 제거로 해결됨
+- `AuthProvider import conflict` → `CustomAuthProvider`로 해결됨
+- `Amplify 빌드 오류` → pubspec.yaml에서 모든 Amplify 패키지 제거함
+- `Firebase 빌드 오류` → Firebase 패키지도 제거, 임시 인증으로 대체
+
+**제거된 의존성들:**
+- `amplify_flutter`, `amplify_auth_cognito`, `amplify_storage_s3`, `amplify_api`, `amplify_datastore`
+- `firebase_core`, `firebase_auth`, `google_sign_in`
+
+**대체 구현:**
+- AWS HTTP API 직접 호출로 Amplify 대체
+- 임시 인증 시스템으로 Firebase Auth 대체
+- 환경 변수 기반 설정으로 동적 구성
 
 ## 🧪 8단계: 테스트
 
 ### 8.1 API 테스트
 ```bash
 # API 엔드포인트 테스트
-curl -X GET https://[api-id].execute-api.ap-northeast-2.amazonaws.com/dev/health
+curl -X GET https://[api-id].execute-api.us-west-1.amazonaws.com/dev/health
 
 # 파일 업로드 테스트
-curl -X POST https://[api-id].execute-api.ap-northeast-2.amazonaws.com/dev/upload \
+curl -X POST https://[api-id].execute-api.us-west-1.amazonaws.com/dev/upload \
   -H "Content-Type: application/json" \
   -d '{"filename": "test.mp4", "fileType": "video"}'
 ```
@@ -336,7 +430,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 class APIService {
-  static const String baseUrl = 'https://[api-id].execute-api.ap-northeast-2.amazonaws.com/dev';
+  static const String baseUrl = 'https://[api-id].execute-api.us-west-1.amazonaws.com/dev';
   
   static Future<Map<String, dynamic>> startAnalysis(String fileUrl, String testType) async {
     final response = await http.post(

@@ -19,10 +19,10 @@ dependencies:
     sdk: flutter
     
 
-  # Google Sign In
-  google_sign_in: ^6.1.6
-  firebase_core: ^2.24.2
-  firebase_auth: ^4.15.3
+  # Authentication (Firebase 제거 - AWS 인증 대신 사용 안함)
+  # google_sign_in: ^6.1.6 - 제거됨
+  # firebase_core: ^2.24.2 - 제거됨  
+  # firebase_auth: ^4.15.3 - 제거됨
 
   # HTTP 통신
   http: ^1.1.2
@@ -63,12 +63,12 @@ dependencies:
   flutter_tts: ^3.8.5
   volume_controller: ^2.0.7
   
-  # AWS Amplify
-  amplify_flutter: ^2.0.0
-  amplify_auth_cognito: ^2.0.0
-  amplify_storage_s3: ^2.0.0
-  amplify_api: ^2.0.0
-  amplify_datastore: ^2.0.0
+  # HTTP 및 파일 처리 (Amplify 대체)
+  # amplify_flutter: ^2.0.0 - 제거됨
+  # amplify_auth_cognito: ^2.0.0 - 제거됨  
+  # amplify_storage_s3: ^2.0.0 - 제거됨
+  # amplify_api: ^2.0.0 - 제거됨
+  # amplify_datastore: ^2.0.0 - 제거됨
   
   # 화면 녹화 - 간단한 구현으로 대체
 
@@ -98,7 +98,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
-    - assets/icons/
+    # - assets/icons/ - 폴더가 존재하지 않아서 제거
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

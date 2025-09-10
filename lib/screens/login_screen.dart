@@ -1,7 +1,7 @@
 // lib/screens/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
+import '../providers/auth_provider.dart' as local_auth;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -99,7 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 24),
 
                           // Google 로그인 버튼
-                          Consumer<AuthProvider>(
+                          Consumer<local_auth.CustomAuthProvider>(
                             builder: (context, authProvider, child) {
                               return SizedBox(
                                 width: double.infinity,
@@ -233,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 24),
 
                           // 로그인 버튼
-                          Consumer<AuthProvider>(
+                          Consumer<local_auth.CustomAuthProvider>(
                             builder: (context, authProvider, child) {
                               return SizedBox(
                                 width: double.infinity,
@@ -307,7 +307,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
 
                           // 에러 메시지
-                          Consumer<AuthProvider>(
+                          Consumer<local_auth.CustomAuthProvider>(
                             builder: (context, authProvider, child) {
                               if (authProvider.errorMessage != null) {
                                 return Padding(
@@ -367,7 +367,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final authProvider = Provider.of<local_auth.CustomAuthProvider>(context, listen: false);
 
       await authProvider.signInWithEmailAndPassword(
         _emailController.text.trim(),
@@ -451,7 +451,7 @@ class _LoginScreenState extends State<LoginScreen> {
               },
               child: const Text('취소'),
             ),
-            Consumer<AuthProvider>(
+            Consumer<local_auth.CustomAuthProvider>(
               builder: (context, authProvider, child) {
                 return TextButton(
                   onPressed: authProvider.isLoading
@@ -523,7 +523,7 @@ class _LoginScreenState extends State<LoginScreen> {
               },
               child: const Text('취소'),
             ),
-            Consumer<AuthProvider>(
+            Consumer<local_auth.CustomAuthProvider>(
               builder: (context, authProvider, child) {
                 return TextButton(
                   onPressed: authProvider.isLoading

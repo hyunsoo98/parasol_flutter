@@ -1,83 +1,74 @@
 // lib/providers/auth_provider.dart
 import 'package:flutter/foundation.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../services/auth_service.dart';
 
-class AuthProvider with ChangeNotifier {
-  final AuthService _authService = AuthService();
-  User? _user;
+// AuthProvider 클래스 이름 충돌 방지를 위해 별칭 사용
+class CustomAuthProvider with ChangeNotifier {
+  String? _userId;
   bool _isLoading = false;
   String? _errorMessage;
+  bool _isAuthenticated = false;
 
-  User? get user => _user;
-  bool get isAuthenticated => _user != null;
+  // Getters
+  String? get userId => _userId;
+  bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  
+  // Firebase User 호환성을 위한 임시 getter
+  Map<String, dynamic>? get user => _isAuthenticated ? {'uid': _userId} : null;
 
-  AuthProvider() {
-    _initAuthListener();
+  CustomAuthProvider() {
+    // 초기화 로직
+    _checkAuthStatus();
   }
 
-  // Firebase Auth 상태 변화 리스너
-  void _initAuthListener() {
-    _authService.authStateChanges.listen((User? user) {
-      _user = user;
-      notifyListeners();
-    });
+  // 인증 상태 확인
+  void _checkAuthStatus() {
+    // TODO: SharedPreferences 또는 기타 방식으로 로그인 상태 확인
+    _isAuthenticated = false; // 임시로 false
+    notifyListeners();
   }
 
-  // 이메일/비밀번호 로그인
+  // 로그인 (임시 구현)
   Future<void> signInWithEmailAndPassword(String email, String password) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      await _authService.signInWithEmailAndPassword(email, password);
-      // 사용자는 authStateChanges 리스너를 통해 자동으로 업데이트됨
+      // TODO: AWS Cognito 대신 다른 인증 방식 구현
+      await Future.delayed(Duration(seconds: 1)); // 시뮬레이션
+      
+      _userId = email; // 임시로 email을 ID로 사용
+      _isAuthenticated = true;
+      _errorMessage = null;
     } catch (e) {
       _errorMessage = e.toString();
+      _isAuthenticated = false;
     }
 
     _isLoading = false;
     notifyListeners();
   }
 
-  // Google 로그인
+  // 구글 로그인 (비활성화)
   Future<void> signInWithGoogle() async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      final result = await _authService.signInWithGoogle();
-      if (result == null) {
-        _errorMessage = '로그인이 취소되었습니다.';
-      }
-      // 사용자는 authStateChanges 리스너를 통해 자동으로 업데이트됨
-    } catch (e) {
-      _errorMessage = e.toString();
-    }
-
-    _isLoading = false;
+    _errorMessage = 'Google 로그인은 현재 지원되지 않습니다.';
     notifyListeners();
   }
 
-  // 회원가입
+  // 회원가입 (임시 구현)
   Future<void> createUserWithEmailAndPassword(String email, String password, String name) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      await _authService.createUserWithEmailAndPassword(email, password);
-
-      // 사용자 이름 업데이트
-      if (name.isNotEmpty) {
-        await _authService.updateUserProfile(displayName: name);
-      }
-
-      // 사용자는 authStateChanges 리스너를 통해 자동으로 업데이트됨
+      // TODO: 실제 회원가입 로직 구현
+      await Future.delayed(Duration(seconds: 1)); // 시뮬레이션
+      
+      _userId = email;
+      _isAuthenticated = true;
     } catch (e) {
       _errorMessage = e.toString();
     }
@@ -92,8 +83,9 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _authService.signOut();
-      // 사용자는 authStateChanges 리스너를 통해 자동으로 업데이트됨
+      _userId = null;
+      _isAuthenticated = false;
+      _errorMessage = null;
     } catch (e) {
       _errorMessage = e.toString();
     }
@@ -102,19 +94,9 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // 비밀번호 재설정
+  // 비밀번호 재설정 (비활성화)
   Future<void> sendPasswordResetEmail(String email) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      await _authService.sendPasswordResetEmail(email);
-    } catch (e) {
-      _errorMessage = e.toString();
-    }
-
-    _isLoading = false;
+    _errorMessage = '비밀번호 재설정은 현재 지원되지 않습니다.';
     notifyListeners();
   }
 

@@ -1,22 +1,26 @@
 version: 1
-backend:
-  phases:
-    build:
-      commands:
-        - '# Execute Amplify CLI with the helper script'
-        - amplifyPush --simple
 frontend:
   phases:
     preBuild:
       commands:
+        - apt-get update
+        - apt-get install -y xz-utils curl git unzip
+        - curl -L https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.4-stable.tar.xz -o flutter.tar.xz
+        - tar -xJf flutter.tar.xz
+        - export PATH="$PWD/flutter/bin:$PATH"
+        - flutter --version
+        - flutter config --enable-web
+        - flutter clean
         - flutter pub get
     build:
       commands:
-        - flutter build web --release
+        - export PATH="$PWD/flutter/bin:$PATH"
+        - flutter build web --release --web-renderer canvaskit
   artifacts:
     baseDirectory: build/web
     files:
       - '**/*'
   cache:
     paths:
-      - ~/.pub-cache/**/*
+      - .pub-cache/**/*
+      - flutter/.pub-cache/**/*
