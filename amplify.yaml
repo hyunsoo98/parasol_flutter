@@ -1,26 +1,28 @@
 version: 1
-frontend:
-  phases:
-    preBuild:
-      commands:
-        - sudo yum update -y
-        - sudo yum install -y xz curl git unzip which
-        - curl -L https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.4-stable.tar.xz -o flutter.tar.xz
-        - tar -xJf flutter.tar.xz
-        - export PATH="$PWD/flutter/bin:$PATH"
-        - flutter --version
-        - flutter config --enable-web
-        - flutter clean
-        - flutter pub get
-    build:
-      commands:
-        - export PATH="$PWD/flutter/bin:$PATH"
-        - flutter build web --release --web-renderer canvaskit
-  artifacts:
-    baseDirectory: build/web
-    files:
-      - '**/*'
-  cache:
-    paths:
-      - .pub-cache/**/*
-      - flutter/.pub-cache/**/*
+applications:
+  - appRoot: .
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - sudo yum install -y unzip curl git which
+            - curl -L https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.22.2-stable.zip -o flutter.zip
+            - unzip -q flutter.zip
+            - export PATH="$PWD/flutter/bin:$PATH"
+            - which flutter || echo "flutter not found"
+            - flutter --version
+            - flutter config --enable-web
+            - flutter pub get
+        build:
+          commands:
+            - export PATH="$PWD/flutter/bin:$PATH"
+            - flutter build web --release --base-href /
+      artifacts:
+        baseDirectory: build/web
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - .pub-cache
+          - flutter/.pub-cache
+          - build/flutter_web_sdk
