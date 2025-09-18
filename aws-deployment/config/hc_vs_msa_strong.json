@@ -1,0 +1,43 @@
+{
+  "data_root": "C:/Users/user/Desktop/parkinsons/DATA/records",
+  "out": "./runs/hc_vs_msa_strong",
+  "pattern": "*_clean.wav",
+
+  "epochs": 15,
+  "folds": 3,
+  "batch": 32,
+  "lr": 0.0003,
+
+  "device": "cuda",
+  "amp": true,
+
+  "cache_dir": "./feature_cache/hc_vs_msa_strong",
+  "cache_rebuild": false,
+  "no_cache": false,
+
+  "sampler": "weighted",
+
+  "dropout": 0.40,
+  "label_smoothing": 0.03,
+  "weight_decay": 0.0002,
+
+  "sched": "cosine",
+  "warmup_epochs": 2,
+
+  "aug_spec": true,
+  "spec_p": 0.7,
+  "spec_freq_masks": 2,
+  "spec_time_masks": 2,
+  "spec_F": 16,
+  "spec_T_pct": 0.12,
+
+  "aug_seq": false,
+
+  "aug_wave": true,
+  "wave_p": 0.2,
+  "wave_gain_db": 3.0,
+  "wave_pitch_semitones": 0.4,
+
+  "include": ["HC", "MSA"],
+  "early_stop_metric": "auc"
+}

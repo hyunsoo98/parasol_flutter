@@ -1,0 +1,3 @@
+# Lambda 인증 함수용 최소 requirements
+boto3==1.34.0
+botocore==1.34.0

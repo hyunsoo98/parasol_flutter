@@ -1,0 +1,20 @@
+# AWS Lambda 통합 분석을 위한 의존성
+boto3==1.34.0
+botocore==1.34.0
+
+# Eye Tracking 의존성
+opencv-python-headless==4.10.0.84
+mediapipe==0.10.21
+
+# Voice Analysis 의존성 (PyTorch 기반 - CPU)
+torch==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
+torchaudio==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
+librosa==0.10.1
+soundfile==1.0.0
+scikit-learn==1.5.0
+
+# 공통 의존성
+numpy==1.26.4
+pandas==2.2.2
+Pillow==10.3.0
+requests==2.32.3

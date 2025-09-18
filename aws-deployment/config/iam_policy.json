@@ -1,0 +1,64 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:*:*:*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::seoul-ht-09/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::seoul-ht-09"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:Query",
+                "dynamodb:Scan"
+            ],
+            "Resource": [
+                "arn:aws:dynamodb:us-west-1:327784329358:table/analyses",
+                "arn:aws:dynamodb:us-west-1:327784329358:table/analyses/index/*",
+                "arn:aws:dynamodb:us-west-1:327784329358:table/diagnosis_sessions",
+                "arn:aws:dynamodb:us-west-1:327784329358:table/diagnosis_sessions/index/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "sqs:SendMessage",
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes"
+            ],
+            "Resource": [
+                "arn:aws:sqs:us-west-1:327784329358:eye-tracking-queue",
+                "arn:aws:sqs:us-west-1:327784329358:finger-tapping-queue",
+                "arn:aws:sqs:us-west-1:327784329358:voice-analysis-queue"
+            ]
+        }
+    ]
+}
