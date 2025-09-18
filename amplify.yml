@@ -1,0 +1,72 @@
+version: 1
+applications:
+  - appRoot: .
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - set -euxo pipefail
+            # curl 충돌 피하려고 굳이 설치 안 함. xz(해제 툴)만 추가하자긔
+            - sudo dnf -y install git which xz wget || sudo yum -y install git which xz wget
+
+            # ✅ 리눅스는 tar.xz!
+            - FLUTTER_VER=3.22.2
+            - FLUTTER_TAR=flutter_linux_${FLUTTER_VER}-stable.tar.xz
+            - FLUTTER_URL=https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/$FLUTTER_TAR
+
+            # wget 우선, 실패하면 curl fallback (404면 -f로 실패 처리)
+            - wget -q "$FLUTTER_URL" -O "$FLUTTER_TAR" || curl -fL "$FLUTTER_URL" -o "$FLUTTER_TAR"
+
+            # 파일 크기 확인(몇백 바이트면 잘못 받은 거라긔)
+            - ls -lh "$FLUTTER_TAR"
+
+            # 압축 해제
+            - tar -xJf "$FLUTTER_TAR"
+
+            # Flutter 세팅
+            - export PATH="$PWD/flutter/bin:$PATH"
+            - flutter --version
+            - flutter config --enable-web
+            - flutter pub get
+
+        build:
+          commands:
+            - set -euxo pipefail
+            - export PATH="$PWD/flutter/bin:$PATH"
+
+            # 🎯 Flutter 웹 빌드 (프로덕션 모드)
+            - flutter build web --release --web-renderer html
+
+            # 빌드 결과 확인
+            - ls -la build/web/
+
+        postBuild:
+          commands:
+            # 선택사항: 빌드 최적화
+            - echo "Flutter web build completed successfully"
+
+      artifacts:
+        # 🔥 중요: Flutter 웹 빌드 결과물 경로
+        baseDirectory: build/web
+        files:
+          - '**/*'
+
+      cache:
+        paths:
+          # Flutter SDK 캐시
+          - flutter/**/*
+          # Pub 캐시
+          - $HOME/.pub-cache/**/*
+
+    # 🌐 환경변수 설정 (빌드시 적용)
+    environment:
+      variables:
+        # API Gateway 엔드포인트 (올바른 /prod 경로)
+        API_ENDPOINT: https://c7yw4o4948.execute-api.us-west-1.amazonaws.com/prod
+        REGION: us-west-1
+        S3_BUCKET: seoul-ht-09
+        AMPLIFY_ENV: prod
+
+        # Flutter 웹 최적화
+        FLUTTER_WEB: true
+        FLUTTER_BUILD_MODE: release

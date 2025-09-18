@@ -1,47 +1,77 @@
 // lib/providers/auth_provider.dart
 import 'package:flutter/foundation.dart';
+import '../services/parasol_auth_service.dart';
+
+// Amplify 사용 여부에 따라 선택적 import
+// import '../services/amplify_api_service.dart';
 
 // AuthProvider 클래스 이름 충돌 방지를 위해 별칭 사용
 class CustomAuthProvider with ChangeNotifier {
   String? _userId;
+  String? _email;
+  String? _name;
   bool _isLoading = false;
   String? _errorMessage;
   bool _isAuthenticated = false;
 
   // Getters
   String? get userId => _userId;
+  String? get email => _email;
+  String? get name => _name;
   bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  
-  // Firebase User 호환성을 위한 임시 getter
-  Map<String, dynamic>? get user => _isAuthenticated ? {'uid': _userId} : null;
+
+  // Firebase User 호환성을 위한 getter (displayName 지원)
+  ParasolUser? get user => _isAuthenticated ? ParasolUser(
+    uid: _userId!,
+    email: _email!,
+    displayName: _name,
+  ) : null;
 
   CustomAuthProvider() {
     // 초기화 로직
-    _checkAuthStatus();
+    _initializeAuth();
   }
 
-  // 인증 상태 확인
-  void _checkAuthStatus() {
-    // TODO: SharedPreferences 또는 기타 방식으로 로그인 상태 확인
-    _isAuthenticated = false; // 임시로 false
+  // 인증 초기화
+  Future<void> _initializeAuth() async {
+    await parasolAuth.initialize();
+    _updateAuthState();
+
+    // 인증 상태 변경 리스너
+    parasolAuth.authStateChanges.listen((_) {
+      _updateAuthState();
+    });
+  }
+
+  // 인증 상태 업데이트
+  void _updateAuthState() {
+    _isAuthenticated = parasolAuth.isLoggedIn;
+    _userId = parasolAuth.currentUserId;
+    _email = parasolAuth.currentEmail;
+    _name = parasolAuth.currentName;
     notifyListeners();
   }
 
-  // 로그인 (임시 구현)
+  // 로그인
   Future<void> signInWithEmailAndPassword(String email, String password) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // TODO: AWS Cognito 대신 다른 인증 방식 구현
-      await Future.delayed(Duration(seconds: 1)); // 시뮬레이션
-      
-      _userId = email; // 임시로 email을 ID로 사용
-      _isAuthenticated = true;
-      _errorMessage = null;
+      final result = await parasolAuth.login(
+        email: email,
+        password: password,
+      );
+
+      if (result['success'] == true) {
+        _updateAuthState();
+      } else {
+        _errorMessage = result['error'];
+        _isAuthenticated = false;
+      }
     } catch (e) {
       _errorMessage = e.toString();
       _isAuthenticated = false;
@@ -57,18 +87,25 @@ class CustomAuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // 회원가입 (임시 구현)
+  // 회원가입
   Future<void> createUserWithEmailAndPassword(String email, String password, String name) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // TODO: 실제 회원가입 로직 구현
-      await Future.delayed(Duration(seconds: 1)); // 시뮬레이션
-      
-      _userId = email;
-      _isAuthenticated = true;
+      final result = await parasolAuth.register(
+        email: email,
+        password: password,
+        name: name,
+      );
+
+      if (result['success'] == true) {
+        // 회원가입 성공 - 자동 로그인 하지 않음
+        _errorMessage = null;
+      } else {
+        _errorMessage = result['error'];
+      }
     } catch (e) {
       _errorMessage = e.toString();
     }
@@ -83,9 +120,8 @@ class CustomAuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      _userId = null;
-      _isAuthenticated = false;
-      _errorMessage = null;
+      await parasolAuth.logout();
+      _updateAuthState();
     } catch (e) {
       _errorMessage = e.toString();
     }

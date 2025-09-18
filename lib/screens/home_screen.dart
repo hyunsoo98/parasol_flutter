@@ -61,10 +61,8 @@ class HomeScreen extends StatelessWidget {
                                                                         child: CircleAvatar(
                                                                               radius: 30,
                                                                               backgroundColor: const Color(0xFF2F3DA3),
-                                                                              backgroundImage: user?['photoURL'] != null
-                                                                                  ? NetworkImage(user!['photoURL']!)
-                                                                                  : null,
-                                                                              child: user?['photoURL'] == null
+                                                                              backgroundImage: null, // ParasolUser에는 photoURL이 없음
+                                                                              child: true // 항상 이니셜 표시
                                                                                   ? Text(
                                                                                     _getUserInitial(user),
                                                                                     style: const TextStyle(
@@ -91,7 +89,7 @@ class HomeScreen extends StatelessWidget {
                                                                                     ),
                                                                                     const SizedBox(height: 4),
                                                                                     Text(
-                                                                                          user?['email'] ?? '',
+                                                                                          user?.email ?? '',
                                                                                           style: TextStyle(
                                                                                                 fontSize: 14,
                                                                                                 color: Colors.grey[600],
@@ -281,14 +279,14 @@ class HomeScreen extends StatelessWidget {
         if (user?.displayName != null && user!.displayName!.isNotEmpty) {
           return user.displayName!;
         }
-        
-        if (user?['email'] != null && user!.email!.isNotEmpty) {
+
+        if (user?.email != null && user!.email!.isNotEmpty) {
           final emailParts = user.email!.split('@');
           if (emailParts.isNotEmpty && emailParts[0].isNotEmpty) {
             return emailParts[0];
           }
         }
-        
+
         return '사용자';
       }
 
@@ -297,8 +295,8 @@ class HomeScreen extends StatelessWidget {
         if (user?.displayName != null && user!.displayName!.isNotEmpty) {
           return user.displayName![0].toUpperCase();
         }
-        
-        if (user?['email'] != null && user!.email!.isNotEmpty) {
+
+        if (user?.email != null && user!.email!.isNotEmpty) {
           return user.email![0].toUpperCase();
         }
         
