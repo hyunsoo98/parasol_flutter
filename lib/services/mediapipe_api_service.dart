@@ -81,7 +81,9 @@ class MediaPipeApiService {
     }
   }
 
-  /// 시선 추적 분석 (AWS 통합 API 기반) — /api/v1/upload (POST JSON)
+  /// 시선 추적 분석 (DEPRECATED - 클라이언트 실시간 분석으로 대체됨)
+  /// 이 메서드는 더 이상 사용되지 않습니다. StructuredEyeTestService를 사용하세요.
+  @Deprecated('Use StructuredEyeTestService for client-side real-time analysis')
   Future<EyeTrackingResult> analyzeEyeTracking({
     required File videoFile,
     int step = 2,
@@ -89,88 +91,10 @@ class MediaPipeApiService {
     double blinkThresh = 0.18,
     int maxFrames = 12000,
   }) async {
-    try {
-      // AWS 통합 업로드 API 사용 (올바른 엔드포인트)
-      final uri = Uri.parse('$_baseUrl/api/v1/upload');
-
-      // 파일 존재/크기 체크
-      if (!videoFile.existsSync()) {
-        throw Exception('비디오 파일이 존재하지 않습니다: ${videoFile.path}');
-      }
-      final fileSize = await videoFile.length();
-      if (fileSize == 0) throw Exception('비디오 파일이 비어있습니다');
-      if (fileSize > 100 * 1024 * 1024) {
-        throw Exception('비디오 파일이 너무 큽니다: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-      }
-
-      // 파일을 base64로 인코딩
-      final bytes = await videoFile.readAsBytes();
-      final base64Video = base64Encode(bytes);
-
-      // 현재 사용자 ID 가져오기
-      if (!parasolAuth.isLoggedIn) {
-        throw Exception('로그인이 필요합니다.');
-      }
-
-      // AWS 통합 API 요청 본문 (업로드 엔드포인트 형식)
-      final requestBody = {
-        'analysis_type': 'eye-tracking',
-        'video_data': base64Video,  // 'file_data' -> 'video_data'로 변경
-        'user_id': parasolAuth.currentUserId,
-        'parameters': {
-          'step': step,
-          'max_frames': maxFrames,
-          'skip_db_save': false,  // DynamoDB 저장 활성화
-          // 서버에서 기본값 사용: vpp_thresh=0.06, blink_thresh=0.18
-        },
-      };
-
-      print('POST $uri');
-      print('파일 크기: $fileSize bytes');
-
-      final response = await http.post(
-        uri,
-        headers: await _authHeaders(),
-        body: jsonEncode(requestBody),
-      ).timeout(const Duration(minutes: 5));
-
-      print('API 상태: ${response.statusCode}');
-      print('API 응답: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-
-        // 업로드 성공 - analysis_id 받아서 결과 폴링 시작
-        if (data.containsKey('analysisId')) {
-          final analysisId = data['analysisId'];
-          print('업로드 성공, analysis_id: $analysisId');
-
-          // 결과 폴링 시작
-          return await _pollForResults(analysisId);
-        } else {
-          throw Exception('업로드 응답에 analysisId가 없습니다: $data');
-        }
-      } else {
-        // 상세 에러 메시지
-        String msg = '시선 추적 API 호출 실패';
-        switch (response.statusCode) {
-          case 400: msg = '잘못된 요청 (400): ${response.body}'; break;
-          case 401: msg = '인증 실패 (401): 토큰/우회 키 확인'; break;
-          case 403: msg = '접근 권한 없음 (403): ${response.body}'; break;
-          case 404: msg = '엔드포인트 없음 (404): /api/v1/analyze/eye-tracking'; break;
-          case 413: msg = '파일 크기 초과 (413)'; break;
-          case 422: msg = '처리 불가 (422): ${response.body}'; break;
-          case 500: msg = '서버 내부 오류 (500): ${response.body}'; break;
-          case 502: msg = '게이트웨이 오류 (502)'; break;
-          case 503: msg = '서비스 불가 (503)'; break;
-          default:  msg = '알 수 없는 오류 (${response.statusCode}): ${response.body}';
-        }
-        throw Exception(msg);
-      }
-    } catch (e) {
-      print('시선 추적 분석 오류: $e');
-      throw Exception('시선 추적 분석 실패: $e');
-    }
+    throw Exception(
+      '시선추적 분석이 클라이언트 실시간 분석으로 변경되었습니다. '
+      'StructuredEyeTestService를 사용하세요.'
+    );
   }
 
   /// 서버 상태 확인 — /api/v1/health (GET)
@@ -188,7 +112,8 @@ class MediaPipeApiService {
     }
   }
 
-  /// 시선 추적 분석 (AWS 통합 API 기반) - bytes 방식
+  /// 시선 추적 분석 (DEPRECATED - 클라이언트 실시간 분석으로 대체됨)
+  @Deprecated('Use StructuredEyeTestService for client-side real-time analysis')
   Future<EyeTrackingResult> analyzeEyeTrackingFromBytes({
     required List<int> videoBytes,
     required String fileName,
@@ -197,154 +122,15 @@ class MediaPipeApiService {
     double blinkThresh = 0.18,
     int maxFrames = 12000,
   }) async {
-    try {
-      // AWS 통합 업로드 API 사용 (올바른 엔드포인트)
-      final uri = Uri.parse('$_baseUrl/api/v1/upload');
-
-      // 파일 크기 체크
-      final fileSize = videoBytes.length;
-      if (fileSize == 0) throw Exception('비디오 데이터가 비어있습니다');
-      if (fileSize > 100 * 1024 * 1024) {
-        throw Exception('비디오 파일이 너무 큽니다: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-      }
-
-      // 파일을 base64로 인코딩
-      final base64Video = base64Encode(videoBytes);
-
-      // 현재 사용자 ID 가져오기
-      if (!parasolAuth.isLoggedIn) {
-        throw Exception('로그인이 필요합니다.');
-      }
-
-      // AWS 통합 API 요청 본문 (업로드 엔드포인트 형식)
-      final requestBody = {
-        'analysis_type': 'eye-tracking',
-        'video_data': base64Video,  // 'file_data' -> 'video_data'로 변경
-        'user_id': parasolAuth.currentUserId,
-        'parameters': {
-          'step': step,
-          'max_frames': maxFrames,
-          'skip_db_save': false,  // DynamoDB 저장 활성화
-          // 서버에서 기본값 사용: vpp_thresh=0.06, blink_thresh=0.18
-        },
-      };
-
-      print('POST $uri');
-      print('파일 크기: $fileSize bytes');
-
-      final response = await http.post(
-        uri,
-        headers: await _authHeaders(),
-        body: jsonEncode(requestBody),
-      ).timeout(const Duration(minutes: 5));
-
-      print('API 상태: ${response.statusCode}');
-      print('API 응답: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-
-        // 업로드 성공 - analysis_id 받아서 결과 폴링 시작
-        if (data.containsKey('analysisId')) {
-          final analysisId = data['analysisId'];
-          print('업로드 성공, analysis_id: $analysisId');
-
-          // 결과 폴링 시작
-          return await _pollForResults(analysisId);
-        } else {
-          throw Exception('업로드 응답에 analysisId가 없습니다: $data');
-        }
-      } else {
-        // 상세 에러 메시지
-        String msg = '시선 추적 API 호출 실패';
-        switch (response.statusCode) {
-          case 400: msg = '잘못된 요청 (400): ${response.body}'; break;
-          case 401: msg = '인증 실패 (401): 토큰/우회 키 확인'; break;
-          case 403: msg = '접근 권한 없음 (403): ${response.body}'; break;
-          case 404: msg = '엔드포인트 없음 (404): /api/v1/analyze/eye-tracking'; break;
-          case 413: msg = '파일 크기 초과 (413)'; break;
-          case 422: msg = '처리 불가 (422): ${response.body}'; break;
-          case 500: msg = '서버 내부 오류 (500): ${response.body}'; break;
-          case 502: msg = '게이트웨이 오류 (502)'; break;
-          case 503: msg = '서비스 불가 (503)'; break;
-          default:  msg = '알 수 없는 오류 (${response.statusCode}): ${response.body}';
-        }
-        throw Exception(msg);
-      }
-    } catch (e) {
-      print('시선 추적 분석 오류: $e');
-      throw Exception('시선 추적 분석 실패: $e');
-    }
+    throw Exception(
+      '시선추적 분석이 클라이언트 실시간 분석으로 변경되었습니다. '
+      'StructuredEyeTestService를 사용하세요.'
+    );
   }
 
-  /// 결과 폴링 - /api/v1/status/{analysis_id} 및 /api/v1/results/{analysis_id}
+  /// 결과 폴링 (DEPRECATED - 더 이상 사용되지 않음)
+  @Deprecated('Eye tracking analysis moved to client-side')
   Future<EyeTrackingResult> _pollForResults(String analysisId) async {
-    const maxAttempts = 60; // 최대 5분 대기 (5초 간격)
-    const pollInterval = Duration(seconds: 5);
-
-    for (int attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        // 상태 확인 - Path Parameter 방식 (API Gateway 구조에 맞춤)
-        final statusUri = Uri.parse('$_baseUrl/api/v1/status/$analysisId');
-        final statusResponse = await http.get(
-          statusUri,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-        ).timeout(const Duration(seconds: 10));
-
-        print('상태 확인 ($attempt/$maxAttempts): ${statusResponse.statusCode}');
-
-        if (statusResponse.statusCode == 200) {
-          final statusData = json.decode(statusResponse.body);
-          final status = statusData['data']['status'];
-
-          print('분석 상태: $status');
-
-          if (status == 'completed') {
-            // 완료됨 - 결과 가져오기 (Query Parameter 방식)
-            final resultsUri = Uri.parse('$_baseUrl/api/v1/results?analysis_id=$analysisId');
-            final resultsResponse = await http.get(
-              resultsUri,
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-            ).timeout(const Duration(seconds: 10));
-
-            if (resultsResponse.statusCode == 200) {
-              final resultsData = json.decode(resultsResponse.body);
-              print('분석 결과 받음: ${resultsData['result']}');
-              return EyeTrackingResult.fromJson(resultsData['result']);
-            } else {
-              throw Exception('결과 조회 실패: ${resultsResponse.statusCode} ${resultsResponse.body}');
-            }
-          } else if (status == 'failed') {
-            final error = statusData['data']['error'] ?? '알 수 없는 오류';
-            throw Exception('분석 실패: $error');
-          } else if (status == 'processing' || status == 'uploaded') {
-            // 계속 대기
-            print('분석 진행 중... ${statusData['data']['progress'] ?? 0}%');
-            if (attempt < maxAttempts - 1) {
-              await Future.delayed(pollInterval);
-              continue;
-            }
-          } else {
-            throw Exception('알 수 없는 상태: $status');
-          }
-        } else {
-          throw Exception('상태 확인 실패: ${statusResponse.statusCode} ${statusResponse.body}');
-        }
-      } catch (e) {
-        print('폴링 오류 ($attempt): $e');
-        if (attempt == maxAttempts - 1) {
-          throw Exception('결과 폴링 실패: $e');
-        }
-        await Future.delayed(pollInterval);
-      }
-    }
-
-    throw Exception('분석 시간 초과 (5분)');
+    throw Exception('시선추적 분석이 클라이언트에서 실시간으로 처리됩니다.');
   }
 }

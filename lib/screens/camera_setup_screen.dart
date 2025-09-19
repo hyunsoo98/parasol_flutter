@@ -9,7 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_compress/video_compress.dart';
 
 import '../services/permission_service.dart';
-import '../services/mediapipe_api_service.dart'; // API 연결 활성화
+import '../services/mediapipe_api_service.dart';
+import 'structured_eye_test_screen.dart'; // API 연결 활성화
 import 'final_diagnosis_screen.dart';
 
 class CameraSetupScreen extends StatefulWidget {
@@ -407,21 +408,22 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
         });
 
         try {
-          final apiService = MediaPipeApiService();
-          final result = await apiService.analyzeEyeTracking(
-            videoFile: finalVideoFile,
-            step: 2,
-            vppThresh: 0.06,
-            blinkThresh: 0.18,
-            maxFrames: 12000,
-          );
-
-          debugPrint('분석 결과: ${result.toJson()}');
-
+          // 기존 서버 분석 방식은 더 이상 지원되지 않습니다.
+          // StructuredEyeTestScreen을 사용하여 실시간 클라이언트 분석을 진행하세요.
           setState(() {
-            _statusMessage = '분석이 완료되었습니다!';
-            _statusColor = Colors.green;
+            _statusMessage = '시선추적 분석이 실시간 방식으로 변경되었습니다.\nStructuredEyeTest를 이용해주세요.';
+            _statusColor = Colors.orange;
           });
+
+          // 새로운 실시간 테스트 화면으로 이동
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => StructuredEyeTestScreen(
+                userId: 'guest_${DateTime.now().millisecondsSinceEpoch}',
+              ),
+            ),
+          );
+          return;
 
           // 결과 화면으로 이동
           if (mounted) {
