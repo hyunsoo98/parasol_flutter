@@ -21,27 +21,31 @@ sqs_client = boto3.client('sqs')
 dynamodb = boto3.resource('dynamodb')
 
 # 환경 변수
-S3_BUCKET = os.environ.get('S3_BUCKET', 'seoul-ht-09')
+S3_BUCKET = os.environ.get('ANALYSIS_BUCKET', 'seoul-ht-09')
+DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE','parasol-analysis')
+EYE_SQS_QUEUE_URL = os.environ.get('EYE_TRACKING_QUEUE','https://sqs.us-west-1.amazonaws.com/327784329358/eye-tracking-queue')
+FINGER_SQS_QUEUE_URL = os.environ.get('EYE_TRACKING_QUEUE','https://sqs.us-west-1.amazonaws.com/327784329358/finger-tapping-queue')
+VOICE_SQS_QUEUE_URL = os.environ.get('VOICE_ANALYSIS_QUEUE','https://sqs.us-west-1.amazonaws.com/327784329358/voice-analysis-queue')
 
 # 표준화된 S3 경로 설정
 ANALYSIS_CONFIGS = {
     'eye-tracking': {
-        's3_prefix': 'videos/eye-tracking/',
-        'sqs_queue_url': os.environ.get('EYE_TRACKING_QUEUE', 'https://sqs.us-west-1.amazonaws.com/730335212232/eye-tracking-processing.fifo'),
+        's3_prefix': 'eye-tracking/',
+        'sqs_queue_url': os.environ.get('EYE_SQS_QUEUE_URL'),
         'dynamodb_table': 'eye-tracking-results',
         'content_type': 'video/mp4',
         'file_extension': '.mp4'
     },
     'finger-tapping': {
-        's3_prefix': 'videos/finger-tapping/',
-        'sqs_queue_url': os.environ.get('FINGER_TAPPING_QUEUE', 'https://sqs.us-west-1.amazonaws.com/730335212232/finger-tapping-processing.fifo'),
+        's3_prefix': 'finger-tapping/',
+        'sqs_queue_url': os.environ.get('FINGER_SQS_QUEUE_URL'),
         'dynamodb_table': 'finger-tapping-results',
         'content_type': 'video/mp4',
         'file_extension': '.mp4'
     },
     'voice-analysis': {
-        's3_prefix': 'audio/voice-analysis/',
-        'sqs_queue_url': os.environ.get('VOICE_ANALYSIS_QUEUE', 'https://sqs.us-west-1.amazonaws.com/730335212232/voice-analysis-processing.fifo'),
+        's3_prefix': 'voice-analysis/',
+        'sqs_queue_url': os.environ.get('VOICE_SQS_QUEUE_URL'),
         'dynamodb_table': 'voice-analysis-results',
         'content_type': 'audio/wav',
         'file_extension': '.wav'
@@ -223,7 +227,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         # SQS에 처리 요청 전송
         try:
             sqs_message = {
-                'analysis_id': analysis_id,  # 스네이크케이스로 수정
+                'analysisId': analysis_id,
                 'user_id': user_id,
                 's3_bucket': S3_BUCKET,
                 's3_key': s3_key,

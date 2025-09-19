@@ -238,6 +238,52 @@ class ParasolAuthService {
       'session_token': _sessionToken,
     };
   }
+
+  // 게스트 로그인 (인증 서버 없이 로컬에서만)
+  Future<Map<String, dynamic>> loginAsGuest() async {
+    try {
+      // 랜덤 게스트 사용자 ID 생성
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final randomSuffix = (timestamp % 10000).toString().padLeft(4, '0');
+      final guestUserId = 'guest_$timestamp';
+      final guestEmail = 'guest_$randomSuffix@temp.com';
+      final guestName = 'Guest User $randomSuffix';
+      final guestToken = 'guest_token_$timestamp';
+
+      // 로컬에 게스트 정보 저장
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_sessionTokenKey, guestToken);
+      await prefs.setString(_userIdKey, guestUserId);
+      await prefs.setString(_emailKey, guestEmail);
+      await prefs.setString(_nameKey, guestName);
+
+      // 메모리에 설정
+      _sessionToken = guestToken;
+      _userId = guestUserId;
+      _email = guestEmail;
+      _name = guestName;
+
+      // 인증 상태 업데이트
+      _authStateController.add(true);
+
+      return {
+        'success': true,
+        'message': '게스트로 로그인되었습니다.',
+        'user_id': guestUserId,
+        'email': guestEmail,
+        'name': guestName,
+        'is_guest': true,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': '게스트 로그인에 실패했습니다: ${e.toString()}',
+      };
+    }
+  }
+
+  // 게스트 사용자인지 확인
+  bool get isGuestUser => _userId?.startsWith('guest_') == true;
 }
 
 // 싱글톤 인스턴스

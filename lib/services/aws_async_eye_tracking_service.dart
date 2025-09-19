@@ -34,37 +34,56 @@ class AwsAsyncEyeTrackingService {
         throw AnalysisException('빈 파일입니다.');
       }
 
-      // 비디오를 Base64로 인코딩
-      final bytes = await videoFile.readAsBytes();
-      final base64Video = base64Encode(bytes);
+      // multipart/form-data로 업로드 (Lambda 업로드 함수와 일치)
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_baseUrl/api/v1/upload'),
+      );
 
-      final requestBody = {
-        'video_data': base64Video,
-        'user_id': userId,
-        'parameters': {
-          'step': step,
-          'vpp_thresh': vppThresh,
-          'blink_thresh': blinkThresh,
-          'max_frames': maxFrames,
-          'blink_min_frames': blinkMinFrames,
-        },
-      };
+      // 파일 추가
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        videoFile.path,
+        filename: 'video.mp4',
+      ));
 
-      final response = await http.post(
-        Uri.parse('$_baseUrl/api/v1/analyze/eye-tracking'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(requestBody),
-      ).timeout(_uploadTimeout);
+      // 분석 타입과 파라미터 추가
+      request.fields['analysis_type'] = 'eye-tracking';
+      request.fields['user_id'] = userId;
+      request.fields['step'] = step.toString();
+      request.fields['vpp_thresh'] = vppThresh.toString();
+      request.fields['blink_thresh'] = blinkThresh.toString();
+      request.fields['max_frames'] = maxFrames.toString();
+      request.fields['blink_min_frames'] = blinkMinFrames.toString();
 
-      if (response.statusCode == 202) {
+      // 헤더 설정
+      request.headers['Accept'] = 'application/json';
+
+      final streamedResponse = await request.send().timeout(_uploadTimeout);
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('업로드 응답 상태: ${response.statusCode}');
+      print('업로드 응답 내용: ${response.body}');
+
+      if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        return AnalysisStartResult.fromJson(result);
+
+        // analysisId 추출 (응답 형식에 맞춤)
+        final analysisId = result['analysisId'] ?? result['analysis_id'] ?? '';
+        if (analysisId.isEmpty) {
+          throw AnalysisException('분석 ID를 받지 못했습니다.');
+        }
+
+        return AnalysisStartResult(
+          analysisId: analysisId,
+          status: result['status'] ?? 'uploaded',
+          message: result['message'] ?? 'Upload successful',
+          fileSize: fileSize,
+          estimatedTime: 300, // 기본 5분
+        );
       } else {
         final error = jsonDecode(response.body);
-        throw AnalysisException(error['error'] ?? 'Unknown error');
+        throw AnalysisException(error['error'] ?? 'Upload failed: ${response.statusCode}');
       }
     } on TimeoutException {
       throw AnalysisException('업로드 시간이 초과되었습니다. 네트워크를 확인해주세요.');
@@ -83,15 +102,16 @@ class AwsAsyncEyeTrackingService {
     bool generateDownloadUrl = false,
   }) async {
     try {
-      final queryParams = {
-        'analysis_id': analysisId,
-        'analysis_type': 'eye-tracking',
-        'include_result': includeResult.toString(),
-        'download_url': generateDownloadUrl.toString(),
+      // Path Parameter 방식으로 변경 (Lambda 상태 함수와 일치)
+      final queryParams = <String, String>{
+        if (includeResult) 'include_result': 'true',
+        if (generateDownloadUrl) 'download_url': 'true',
       };
 
-      final uri = Uri.parse('$_baseUrl/api/v1/status')
-          .replace(queryParameters: queryParams);
+      final uri = Uri.parse('$_baseUrl/api/v1/status/$analysisId')
+          .replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+
+      print('상태 확인 URL: $uri');
 
       final response = await http.get(
         uri,
@@ -100,14 +120,18 @@ class AwsAsyncEyeTrackingService {
         },
       ).timeout(_statusTimeout);
 
+      print('상태 확인 응답: ${response.statusCode}');
+      print('상태 확인 내용: ${response.body}');
+
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        return AnalysisStatus.fromJson(result['data']);
+        final data = result['data'] ?? result;
+        return AnalysisStatus.fromJson(data);
       } else if (response.statusCode == 404) {
         throw AnalysisException('분석을 찾을 수 없습니다.');
       } else {
         final error = jsonDecode(response.body);
-        throw AnalysisException(error['error'] ?? 'Unknown error');
+        throw AnalysisException(error['error'] ?? 'Status check failed: ${response.statusCode}');
       }
     } on TimeoutException {
       throw AnalysisException('상태 조회 시간이 초과되었습니다.');
@@ -323,18 +347,18 @@ class AnalysisStatus {
 
   factory AnalysisStatus.fromJson(Map<String, dynamic> json) {
     return AnalysisStatus(
-      analysisId: json['analysis_id'] ?? '',
+      analysisId: json['analysisId'] ?? json['analysis_id'] ?? '',
       userId: json['user_id'] ?? '',
       status: parseAnalysisStatus(json['status'] ?? ''),
       timestamp: json['timestamp'] ?? 0,
       progress: json['progress'] ?? 0,
-      progressMessage: json['progress_message'],
-      completedAt: json['completed_at'],
-      failedAt: json['failed_at'],
+      progressMessage: json['progress_message'] ?? json['progressMessage'],
+      completedAt: json['completed_at'] ?? json['completedAt'],
+      failedAt: json['failed_at'] ?? json['failedAt'],
       error: json['error'],
       result: json['result'] != null ? AnalysisResult.fromJson(json['result']) : null,
-      downloadUrls: json['download_urls'] != null 
-          ? Map<String, String>.from(json['download_urls']) 
+      downloadUrls: json['download_urls'] != null
+          ? Map<String, String>.from(json['download_urls'])
           : null,
     );
   }

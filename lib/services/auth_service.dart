@@ -1,136 +1,68 @@
 // lib/services/auth_service.dart
+// Firebase 기반 인증 서비스를 AWS Cognito/Parasol 기반으로 대체
+
 import 'dart:async';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'parasol_auth_service.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  // ParasolAuthService 인스턴스 사용
+  final ParasolAuthService _parasolAuth = parasolAuth;
 
-  // 현재 사용자 스트림
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  // 현재 사용자 스트림 (ParasolAuthService의 상태 변경을 스트림으로 감싸기)
+  Stream<String?> get authStateChanges async* {
+    yield _parasolAuth.currentUserId;
+    // 실제 상태 변경 감지를 위해서는 ParasolAuthService에 StreamController를 추가해야 함
+  }
 
-  // 현재 사용자
-  User? get currentUser => _auth.currentUser;
+  // 현재 사용자 ID
+  String? get currentUserId => _parasolAuth.currentUserId;
 
   // 로그인 상태 확인
   Future<bool> isLoggedIn() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return currentUser != null;
+    return _parasolAuth.isLoggedIn;
   }
 
   // 이메일/비밀번호 로그인
-  Future<UserCredential> signInWithEmailAndPassword(String email, String password) async {
+  Future<Map<String, dynamic>> signInWithEmailAndPassword(String email, String password) async {
     try {
-      UserCredential result = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return result;
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthException(e);
+      final result = await _parasolAuth.login(email: email, password: password);
+      if (result['success'] == true) {
+        return result;
+      } else {
+        throw Exception(result['error'] ?? 'Login failed');
+      }
+    } catch (e) {
+      throw Exception('로그인 실패: ${e.toString()}');
     }
   }
 
   // 이메일/비밀번호 회원가입
-  Future<UserCredential> createUserWithEmailAndPassword(String email, String password) async {
+  Future<Map<String, dynamic>> createUserWithEmailAndPassword(String email, String password, String name) async {
     try {
-      UserCredential result = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return result;
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthException(e);
-    }
-  }
-
-  // Google 로그인
-  Future<UserCredential?> signInWithGoogle() async {
-    try {
-      // Google 로그인 트리거
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-
-      if (googleUser == null) {
-        // 사용자가 로그인을 취소함
-        return null;
+      final result = await _parasolAuth.register(email: email, password: password, name: name);
+      if (result['success'] == true) {
+        return result;
+      } else {
+        throw Exception(result['error'] ?? 'Registration failed');
       }
-
-      // Google 인증 세부 정보 가져오기
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-
-      // Firebase 자격 증명 만들기
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // Firebase에 로그인
-      return await _auth.signInWithCredential(credential);
     } catch (e) {
-      throw Exception('Google 로그인 실패: ${e.toString()}');
+      throw Exception('회원가입 실패: ${e.toString()}');
     }
   }
 
   // 로그아웃
   Future<void> signOut() async {
     try {
-      await Future.wait([
-        _auth.signOut(),
-        _googleSignIn.signOut(),
-      ]);
+      await _parasolAuth.logout();
     } catch (e) {
       throw Exception('로그아웃 실패: ${e.toString()}');
-    }
-  }
-
-  // 비밀번호 재설정
-  Future<void> sendPasswordResetEmail(String email) async {
-    try {
-      await _auth.sendPasswordResetEmail(email: email);
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthException(e);
-    }
-  }
-
-  // 사용자 프로필 업데이트
-  Future<void> updateUserProfile({String? displayName, String? photoURL}) async {
-    try {
-      await currentUser?.updateDisplayName(displayName);
-      await currentUser?.updatePhotoURL(photoURL);
-    } catch (e) {
-      throw Exception('프로필 업데이트 실패: ${e.toString()}');
-    }
-  }
-
-  // Firebase Auth 예외 처리
-  String _handleAuthException(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'user-not-found':
-        return '등록되지 않은 이메일입니다.';
-      case 'wrong-password':
-        return '잘못된 비밀번호입니다.';
-      case 'email-already-in-use':
-        return '이미 사용 중인 이메일입니다.';
-      case 'weak-password':
-        return '비밀번호가 너무 약합니다.';
-      case 'invalid-email':
-        return '유효하지 않은 이메일 주소입니다.';
-      case 'user-disabled':
-        return '비활성화된 사용자 계정입니다.';
-      case 'too-many-requests':
-        return '너무 많은 시도입니다. 잠시 후 다시 시도해주세요.';
-      case 'operation-not-allowed':
-        return '허용되지 않은 작업입니다.';
-      default:
-        return '인증 오류가 발생했습니다: ${e.message}';
     }
   }
 
   // JWT 토큰 가져오기
   Future<String?> getIdToken({bool forceRefresh = false}) async {
     try {
-      return await currentUser?.getIdToken(forceRefresh);
+      return _parasolAuth.accessToken;
     } catch (e) {
       throw Exception('토큰 가져오기 실패: ${e.toString()}');
     }
@@ -138,23 +70,24 @@ class AuthService {
 
   // 토큰과 함께 사용할 헤더 생성
   Future<Map<String, String>> getAuthHeaders() async {
-    final token = await getIdToken();
-    return {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
+    return _parasolAuth.getAuthenticatedHeaders();
   }
 
-  // 개발용 - 데모 로그인 (실제 운영에서는 제거)
-  Future<void> demoLogin(String email, String password) async {
-    await Future.delayed(const Duration(seconds: 1));
+  // 사용자 정보
+  Map<String, dynamic>? get userInfo => _parasolAuth.userInfo;
 
-    if (email.isNotEmpty && password.isNotEmpty) {
-      // 실제로는 Firebase 로그인을 사용하므로 이 메서드는 사용하지 않음
-      throw Exception('데모 로그인은 더 이상 지원되지 않습니다. Firebase 로그인을 사용해주세요.');
-    } else {
-      throw Exception('이메일과 비밀번호를 입력해주세요.');
-    }
+  // 비밀번호 재설정 (미구현 - 필요시 API 추가)
+  Future<void> sendPasswordResetEmail(String email) async {
+    throw Exception('비밀번호 재설정은 현재 지원되지 않습니다.');
+  }
+
+  // 사용자 프로필 업데이트 (미구현 - 필요시 API 추가)
+  Future<void> updateUserProfile({String? displayName, String? photoURL}) async {
+    throw Exception('프로필 업데이트는 현재 지원되지 않습니다.');
+  }
+
+  // Google 로그인 (미구현 - 필요시 OAuth 추가)
+  Future<Map<String, dynamic>?> signInWithGoogle() async {
+    throw Exception('Google 로그인은 현재 지원되지 않습니다.');
   }
 }

@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import io
 import os
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 import traceback
 
@@ -28,6 +29,23 @@ dynamodb = boto3.resource('dynamodb')
 S3_BUCKET = os.environ.get('S3_BUCKET', 'seoul-ht-09')
 S3_PREFIX = os.environ.get('S3_PREFIX', 'parasol/')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE', 'eye-tracking-results')
+
+def convert_floats_to_decimals(obj):
+    """
+    DynamoDB에서 사용할 수 있도록 float을 Decimal로 변환
+    """
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: convert_floats_to_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_floats_to_decimals(item) for item in obj]
+    elif isinstance(obj, np.floating):
+        return Decimal(str(float(obj)))
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    else:
+        return obj
 
 # DynamoDB 테이블 참조
 table = dynamodb.Table(DYNAMODB_TABLE)
@@ -337,9 +355,11 @@ def lambda_handler(event, context):
                         # raw_data는 DynamoDB에 저장하지 않음 (크기 제한)
                         del result['raw_data']
                     
-                    # 최종 결과를 DynamoDB에 저장
+                    # 최종 결과를 DynamoDB에 저장 (float을 Decimal로 변환)
+                    safe_result = convert_floats_to_decimals(result)
+
                     table.update_item(
-                        Key={'analysis_id': analysis_id},
+                        Key={'analysisId': analysis_id},
                         UpdateExpression='SET #status = :status, #result = :result, #progress = :progress, #completed_at = :completed_at',
                         ExpressionAttributeNames={
                             '#status': 'status',
@@ -349,7 +369,7 @@ def lambda_handler(event, context):
                         },
                         ExpressionAttributeValues={
                             ':status': 'completed',
-                            ':result': result,
+                            ':result': safe_result,
                             ':progress': 100,
                             ':completed_at': int(time.time())
                         }
@@ -370,7 +390,7 @@ def lambda_handler(event, context):
             if analysis_id:
                 # 실패 상태로 업데이트
                 table.update_item(
-                    Key={'analysis_id': analysis_id},
+                    Key={'analysisId': analysis_id},
                     UpdateExpression='SET #status = :status, #error = :error, #failed_at = :failed_at',
                     ExpressionAttributeNames={
                         '#status': 'status',
@@ -388,7 +408,7 @@ def update_progress(analysis_id: str, progress: int, message: str):
     """진행률 업데이트"""
     try:
         table.update_item(
-            Key={'analysis_id': analysis_id},
+            Key={'analysisId': analysis_id},
             UpdateExpression='SET #progress = :progress, #progress_message = :message',
             ExpressionAttributeNames={
                 '#progress': 'progress',

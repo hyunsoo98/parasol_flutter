@@ -8,6 +8,7 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/phone_auth_screen.dart';
 import 'config/aws_config.dart';
+import 'services/parasol_auth_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,8 @@ Future<void> _initializeApp() async {
     // Initialize AWS configuration
     AWSConfig.initialize();
     print('Successfully initialized AWS configuration 🎉');
+
+    // ParasolAuth는 CustomAuthProvider에서 초기화됨
   } catch (e) {
     print('An error occurred initializing app: $e');
   }

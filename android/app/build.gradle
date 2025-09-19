@@ -16,7 +16,7 @@ plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
-    id 'com.google.gms.google-services'  // Firebase 사용하는 경우
+    // id 'com.google.gms.google-services'  // Firebase 제거됨
 }
 
 def localProperties = new Properties()
@@ -45,6 +45,7 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -71,6 +72,10 @@ flutter {
 }
 
 dependencies {
-    implementation platform('com.google.firebase:firebase-bom:34.1.0')
-    implementation 'com.google.firebase:firebase-auth'
+    // Core library desugaring for AWS Amplify
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+
+    // Firebase 의존성 완전 제거
+    // implementation platform('com.google.firebase:firebase-bom:34.1.0')
+    // implementation 'com.google.firebase:firebase-auth'
 }

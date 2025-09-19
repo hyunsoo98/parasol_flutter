@@ -5,15 +5,18 @@ import 'package:camera/camera.dart';
 import 'package:circular_countdown_timer/circular_countdown_timer.dart';
 import '../services/permission_service.dart';
 import '../services/api_service.dart';
+import '../services/test_flow_service.dart';
 import 'voice_analysis_screen.dart';
 import 'final_diagnosis_screen.dart';
 
 class FingerTappingScreen extends StatefulWidget {
   final bool isStandaloneTest; // 개별 검사 모드인지 여부
-  
+  final TestFlowService? testFlowService; // 시선추적 연계 데이터
+
   const FingerTappingScreen({
-    Key? key, 
+    Key? key,
     this.isStandaloneTest = false,
+    this.testFlowService,
   }) : super(key: key);
 
   @override
@@ -40,7 +43,11 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
   Map<String, dynamic>? _analysisResult;
   double? _pdProbability;
   String _diagnosis = '';
-  
+
+  // 시선추적 연계 데이터
+  Map<String, dynamic>? _eyeTestContext;
+  bool _fromEyeTest = false;
+
   // UI 컨트롤러
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -49,6 +56,12 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
   @override
   void initState() {
     super.initState();
+
+    // 시선추적 테스트에서 연계된 경우 컨텍스트 로드
+    if (widget.testFlowService != null) {
+      _eyeTestContext = widget.testFlowService!.getFingerTappingStartData();
+      _fromEyeTest = _eyeTestContext != null;
+    }
     _initializeCamera();
     _setupAnimations();
   }
@@ -189,6 +202,36 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
                   ),
                 ),
                 const SizedBox(height: 16),
+                // 시선추적 연계 정보 표시
+                if (_fromEyeTest && _eyeTestContext != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2F3DA3).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text(
+                          '이전 시선추적 검사 완료',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2F3DA3),
+                          ),
+                        ),
+                        Text(
+                          'PSP 위험도: ${_eyeTestContext!['psp_risk_from_eye'] ? '높음' : '낮음'}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 const Text(
                   '검지와 엄지손가락을\n빠르고 규칙적으로\n마주쳐 주세요',
                   style: TextStyle(
@@ -554,6 +597,7 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
         _pdProbability = 0.8; // 너무 적은 탭은 문제가 있을 수 있음
         _diagnosis = '탭핑 횟수가 부족합니다';
       });
+      _submitResultsToServer();
       return;
     }
     
@@ -609,24 +653,49 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
       _pdProbability = math.min(1.0, pdProbability);
       _diagnosis = diagnosis;
     });
-    
-    // API에 결과 전송 (선택사항)
-    _sendResultsToAPI();
+
+    // 서버로 결과 전송
+    _submitResultsToServer();
   }
 
-  Future<void> _sendResultsToAPI() async {
+  Future<void> _submitResultsToServer() async {
     try {
-      final apiService = ApiService();
-      await apiService.predictFinger({
+      final fingerResults = {
         'tap_count': _tapCount,
         'duration': _testDuration,
         'analysis_result': _analysisResult,
         'pd_probability': _pdProbability,
         'diagnosis': _diagnosis,
         'timestamps': _tapTimestamps.map((t) => t.toIso8601String()).toList(),
-      });
+        'test_completed_at': DateTime.now().toIso8601String(),
+      };
+
+      // 시선추적 연계 테스트인 경우
+      if (widget.testFlowService != null && _fromEyeTest) {
+        final result = await widget.testFlowService!.completeFingerTapping(
+          fingerResults: fingerResults,
+          additionalMetadata: {
+            'platform': 'flutter',
+            'test_type': 'finger_tapping_connected',
+          },
+        );
+
+        if (result['success'] == true) {
+          print('연계 테스트 완료: ${result['session_id']}');
+          // 통합 분석 결과 요청
+          final combinedAnalysis = await widget.testFlowService!.requestCombinedAnalysis();
+          print('통합 분석 완료: $combinedAnalysis');
+        } else {
+          print('연계 테스트 전송 실패: ${result['error']}');
+        }
+      } else {
+        // 독립 finger-tapping 테스트인 경우 - AWS 서버로 전송
+        final apiService = ApiService();
+        await apiService.predictFinger(fingerResults);
+        print('독립 finger-tapping 테스트 완료 (AWS 처리)');
+      }
     } catch (e) {
-      print('API 전송 실패: $e');
+      print('결과 전송 실패: $e');
     }
   }
 

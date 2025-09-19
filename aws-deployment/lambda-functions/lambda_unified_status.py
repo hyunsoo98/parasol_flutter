@@ -12,6 +12,14 @@ import os
 import time
 from typing import Dict, Any
 from botocore.exceptions import ClientError
+from decimal import Decimal
+
+class DecimalEncoder(json.JSONEncoder):
+    """DynamoDB Decimal 타입을 JSON으로 직렬화하기 위한 커스텀 인코더"""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 # AWS 클라이언트 초기화
 dynamodb = boto3.resource('dynamodb')
@@ -49,9 +57,12 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 'body': json.dumps({'message': 'OK'})
             }
         
-        # 쿼리 파라미터 추출
+        # Path Parameter에서 analysis_id 추출 (API Gateway 구조에 맞춤)
+        path_parameters = event.get('pathParameters') or {}
+        analysis_id = path_parameters.get('analysis_id')
+
+        # 쿼리 파라미터 추출 (추가 옵션용)
         query_parameters = event.get('queryStringParameters') or {}
-        analysis_id = query_parameters.get('analysis_id')
         user_id = query_parameters.get('user_id')
         analysis_type = query_parameters.get('analysis_type')  # 'eye-tracking' 또는 'finger-tapping'
         include_result = query_parameters.get('include_result', 'true').lower() == 'true'
@@ -93,14 +104,14 @@ def get_analysis_status(analysis_id: str, analysis_type: str, include_result: bo
     for table_name, detected_type in tables_to_check:
         try:
             table = dynamodb.Table(table_name)
-            response = table.get_item(Key={'analysis_id': analysis_id})
+            response = table.get_item(Key={'analysisId': analysis_id})
             
             if 'Item' in response:
                 item = response['Item']
                 
                 # 기본 응답 구성
                 result = {
-                    'analysis_id': analysis_id,
+                    'analysisId': analysis_id,
                     'user_id': item.get('user_id', 'unknown'),
                     'analysis_type': item.get('analysis_type', detected_type),
                     'status': item.get('status', 'unknown'),
@@ -155,12 +166,12 @@ def get_analysis_status(analysis_id: str, analysis_type: str, include_result: bo
                         'headers': headers,
                         'body': json.dumps({
                             'success': True,
-                            'analysis_id': analysis_id,
+                            'analysisId': analysis_id,
                             'analysis_type': detected_type,
                             'result': result.get('result'),
                             'summary': result.get('summary'),
                             'download_urls': result.get('download_urls')
-                        })
+                        }, cls=DecimalEncoder)
                     }
                 
                 return {
@@ -169,7 +180,7 @@ def get_analysis_status(analysis_id: str, analysis_type: str, include_result: bo
                     'body': json.dumps({
                         'success': True,
                         'data': result
-                    })
+                    }, cls=DecimalEncoder)
                 }
                 
         except ClientError as e:
@@ -219,7 +230,7 @@ def get_user_analyses(user_id: str, analysis_type: str, headers: Dict[str, str])
             # 응답 형식 변환
             for item in items:
                 analysis_info = {
-                    'analysis_id': item['analysis_id'],
+                    'analysisId': item['analysisId'],
                     'analysis_type': item.get('analysis_type', detected_type),
                     'status': item.get('status', 'unknown'),
                     'timestamp': item.get('timestamp'),
@@ -244,7 +255,7 @@ def get_user_analyses(user_id: str, analysis_type: str, headers: Dict[str, str])
             'analysis_type': analysis_type or 'all',
             'total_count': len(all_analyses),
             'analyses': all_analyses
-        })
+        }, cls=DecimalEncoder)
     }
 
 def create_eye_tracking_summary(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -352,5 +363,5 @@ def create_error_response(status_code: int, message: str, headers: Dict[str, str
         'body': json.dumps({
             'success': False,
             'error': message
-        })
+        }, cls=DecimalEncoder)
     }

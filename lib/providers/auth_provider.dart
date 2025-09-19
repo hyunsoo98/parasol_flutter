@@ -142,6 +142,30 @@ class CustomAuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // 게스트 로그인
+  Future<void> signInAsGuest() async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final result = await parasolAuth.loginAsGuest();
+
+      if (result['success'] == true) {
+        _updateAuthState();
+      } else {
+        _errorMessage = result['error'];
+        _isAuthenticated = false;
+      }
+    } catch (e) {
+      _errorMessage = e.toString();
+      _isAuthenticated = false;
+    }
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
   // 호환성을 위한 기존 메서드들
   Future<void> login(String email, String password) async {
     await signInWithEmailAndPassword(email, password);

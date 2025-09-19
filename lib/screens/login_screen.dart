@@ -291,6 +291,47 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
 
+                          // 게스트 로그인 버튼
+                          const SizedBox(height: 16),
+                          Consumer<local_auth.CustomAuthProvider>(
+                            builder: (context, authProvider, child) {
+                              return SizedBox(
+                                width: double.infinity,
+                                height: 50,
+                                child: ElevatedButton(
+                                  onPressed: authProvider.isLoading
+                                      ? null
+                                      : _handleGuestLogin,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.grey.shade600,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: authProvider.isLoading
+                                      ? const CircularProgressIndicator(
+                                    color: Colors.white,
+                                  )
+                                      : const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.person_outline, size: 20),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        '게스트로 시작하기',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+
                           // 비밀번호 찾기 버튼
                           const SizedBox(height: 8),
                           TextButton(
@@ -374,6 +415,11 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text,
       );
     }
+  }
+
+  void _handleGuestLogin() async {
+    final authProvider = Provider.of<local_auth.CustomAuthProvider>(context, listen: false);
+    await authProvider.signInAsGuest();
   }
 
   void _showSignUpDialog(BuildContext context) {

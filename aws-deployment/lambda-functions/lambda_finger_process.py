@@ -405,7 +405,7 @@ def lambda_handler(event, context):
                     
                     # 최종 결과를 DynamoDB에 저장
                     table.update_item(
-                        Key={'analysis_id': analysis_id},
+                        Key={'analysisId': analysis_id},
                         UpdateExpression='SET #status = :status, #result = :result, #progress = :progress, #completed_at = :completed_at',
                         ExpressionAttributeNames={
                             '#status': 'status',
@@ -436,7 +436,7 @@ def lambda_handler(event, context):
             if analysis_id:
                 # 실패 상태로 업데이트
                 table.update_item(
-                    Key={'analysis_id': analysis_id},
+                    Key={'analysisId': analysis_id},
                     UpdateExpression='SET #status = :status, #error = :error, #failed_at = :failed_at',
                     ExpressionAttributeNames={
                         '#status': 'status',
@@ -454,7 +454,7 @@ def update_progress(analysis_id: str, progress: int, message: str):
     """진행률 업데이트"""
     try:
         table.update_item(
-            Key={'analysis_id': analysis_id},
+            Key={'analysisId': analysis_id},
             UpdateExpression='SET #progress = :progress, #progress_message = :message',
             ExpressionAttributeNames={
                 '#progress': 'progress',

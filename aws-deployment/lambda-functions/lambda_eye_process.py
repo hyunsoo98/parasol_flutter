@@ -18,7 +18,7 @@ dynamodb = boto3.resource('dynamodb')
 
 # 환경 변수에서 설정 읽기
 S3_BUCKET = os.environ.get('S3_BUCKET', 'seoul-ht-09')
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE', 'parkinson-analysis')
+DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE', 'parasol-analysis')
 
 # DynamoDB 테이블 참조
 table = dynamodb.Table(DYNAMODB_TABLE)
