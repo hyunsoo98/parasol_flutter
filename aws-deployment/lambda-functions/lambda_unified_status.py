@@ -90,7 +90,7 @@ def get_analysis_status(analysis_id: str, analysis_type: str, include_result: bo
     
     # analysis_type이 명시되지 않은 경우 두 테이블에서 모두 검색
     tables_to_check = []
-    if analysis_type == 'eye-tracking':
+    if analysis_type == 'eye-tracking' or analysis_type == 'eye-tracking-results':
         tables_to_check = [(EYE_TRACKING_TABLE, 'eye-tracking')]
     elif analysis_type == 'finger-tapping':
         tables_to_check = [(FINGER_TAPPING_TABLE, 'finger-tapping')]
@@ -197,7 +197,7 @@ def get_user_analyses(user_id: str, analysis_type: str, headers: Dict[str, str])
     
     # 검색할 테이블 결정
     tables_to_check = []
-    if analysis_type == 'eye-tracking':
+    if analysis_type == 'eye-tracking' or analysis_type == 'eye-tracking-results':
         tables_to_check = [(EYE_TRACKING_TABLE, 'eye-tracking')]
     elif analysis_type == 'finger-tapping':
         tables_to_check = [(FINGER_TAPPING_TABLE, 'finger-tapping')]
@@ -259,14 +259,33 @@ def get_user_analyses(user_id: str, analysis_type: str, headers: Dict[str, str])
     }
 
 def create_eye_tracking_summary(result: Dict[str, Any]) -> Dict[str, Any]:
-    """Eye Tracking 결과 요약 생성"""
+    """Eye Tracking 결과 요약 생성 (클라이언트 분석 결과 포함)"""
     summary = {
         'analysis_type': 'eye-tracking',
         'diagnosis': '분석불가',
-        'confidence': 'unknown'
+        'confidence': 'unknown',
+        'source': 'client'  # 클라이언트에서 분석됨
     }
-    
-    if 'psp_screening' in result:
+
+    # 클라이언트 실시간 분석 결과 처리
+    if 'psp_detected' in result:
+        psp_detected = result.get('psp_detected', False)
+        vertical_range = result.get('vertical_range', 0.0)
+
+        if psp_detected:
+            summary['diagnosis'] = '파킨슨병 의심 (PSP 징후)'
+            summary['confidence'] = 'high' if vertical_range < 0.03 else 'medium'
+        else:
+            summary['diagnosis'] = '정상 범위'
+            summary['confidence'] = 'medium'
+
+        summary['vertical_range'] = vertical_range
+        summary['test_duration'] = result.get('test_duration', 0)
+        summary['total_frames'] = result.get('total_frames', 0)
+        summary['blink_count'] = result.get('blink_count', 0)
+
+    # 기존 서버 분석 결과 처리 (호환성)
+    elif 'psp_screening' in result:
         psp = result['psp_screening']
         if psp.get('suspected', False):
             summary['diagnosis'] = '파킨슨병 의심 (PSP 징후)'
@@ -274,12 +293,13 @@ def create_eye_tracking_summary(result: Dict[str, Any]) -> Dict[str, Any]:
         else:
             summary['diagnosis'] = '정상 범위'
             summary['confidence'] = 'medium'
-    
+        summary['source'] = 'server'  # 서버에서 분석됨
+
     if 'blink_analysis' in result:
         blink = result['blink_analysis']
         summary['blink_rate'] = blink.get('rate_per_minute', 0)
         summary['blink_count'] = blink.get('count', 0)
-    
+
     return summary
 
 def create_finger_tapping_summary(result: Dict[str, Any]) -> Dict[str, Any]:
