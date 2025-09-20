@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 // import 'package:firebase_auth/firebase_auth.dart'; - 제거됨
-import 'package:fluttertoast/fluttertoast.dart';
+// import 'package:fluttertoast/fluttertoast.dart'; // 임시 비활성화
 
 class PhoneAuthScreen extends StatefulWidget {
   const PhoneAuthScreen({super.key});
@@ -174,13 +174,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   }
 
   void _showToast(String message) {
-    Fluttertoast.showToast(
-      msg: message,
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
-      backgroundColor: Colors.black87,
-      textColor: Colors.white,
-    );
+    // 임시: Fluttertoast 대신 print 사용
+    print('Toast: $message');
+    // Fluttertoast.showToast(
+    //   msg: message,
+    //   toastLength: Toast.LENGTH_SHORT,
+    //   gravity: ToastGravity.BOTTOM,
+    //   backgroundColor: Colors.black87,
+    //   textColor: Colors.white,
+    // );
   }
 
   @override

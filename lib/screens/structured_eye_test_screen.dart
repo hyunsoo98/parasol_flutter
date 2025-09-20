@@ -1,17 +1,20 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
+import '../services/mediapipe_eye_tracking_service.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/test_flow_service.dart';
 import '../services/api_service.dart';
 import '../services/aws_integration_service.dart';
 import 'finger_tapping_screen.dart';
+import '../painters/eye_position_painter.dart';
 
 /// 구조화된 시선추적 테스트 화면 - TTS 가이드와 실시간 ML Kit 분석
 class StructuredEyeTestScreen extends StatefulWidget {
@@ -34,15 +37,18 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   List<CameraDescription>? _cameras;
   bool _isCameraInitialized = false;
 
-  // ML Kit 관련 (더 관대한 얼굴 감지)
+  // MediaPipe Tasks 눈동자 추적 (메인)
+  final MediaPipeEyeTrackingService _mediaEyeTracker = MediaPipeEyeTrackingService();
+
+  // ML Kit 얼굴 감지 (백업)
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
       enableContours: false,        // 윤곽선 비활성화로 성능 향상
       enableLandmarks: true,        // 눈 랜드마크는 필요
       enableClassification: false,  // 분류 비활성화로 성능 향상
       enableTracking: false,        // 추적 비활성화로 성능 향상
-      performanceMode: FaceDetectorMode.fast, // 빠른 모드로 감지율 향상
-      minFaceSize: 0.05,           // 최소 얼굴 크기를 5%로 더 완화
+      performanceMode: FaceDetectorMode.accurate, // 정확도 모드로 변경
+      minFaceSize: 0.01,           // 최소 얼굴 크기를 1%로 더욱 완화
     ),
   );
 
@@ -71,6 +77,25 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   double _irisX = 0.5;
   double _irisY = 0.5;
   double _confidence = 0.0;
+
+  // 시선 움직임 분석 데이터
+  final List<Map<String, dynamic>> _gazeMovements = [];
+  double _minGazeY = 1.0;  // 최상단 시선 위치
+  double _maxGazeY = 0.0;  // 최하단 시선 위치
+  double _lastGazeY = 0.5;
+  DateTime? _lastGazeTime;
+  double _totalGazeDistance = 0.0;
+  int _validGazeFrames = 0;
+
+  // 현재 세트의 시선 범위 추적
+  double _currentSetMinY = 1.0;
+  double _currentSetMaxY = 0.0;
+  List<double> _gazeVelocities = [];
+
+  // 강제 진행 모드
+  bool _forceContinueMode = false;
+  int _failedFramesCount = 0;
+  static const int kMaxFailedFrames = 30; // 30프레임(약 1초) 실패 시 강제 진행
 
   // MediaPipe 스타일 얼굴 추적 상태
   Offset? _prevFaceCenter;
@@ -112,8 +137,22 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
     _testFlowService = widget.testFlowService ?? TestFlowService(apiService: ApiService());
     _sessionId = _testFlowService.startNewTestSession(widget.userId);
 
+    // MediaPipe Tasks 초기화
+    _initializeMediaPipe();
+
     // AWS 연결 테스트 (디버그용)
     _testAwsConnection();
+  }
+
+  /// MediaPipe Tasks 초기화
+  Future<void> _initializeMediaPipe() async {
+    try {
+      await _mediaEyeTracker.initialize();
+      print('MediaPipe Tasks 눈동자 추적 초기화 성공');
+    } catch (e) {
+      print('MediaPipe Tasks 초기화 실패: $e');
+      // 실패해도 ML Kit 백업으로 진행
+    }
   }
 
   Future<void> _testAwsConnection() async {
@@ -191,10 +230,10 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
 
   Future<void> _processFrame(CameraImage image) async {
     try {
-      // 얼굴 감지 빈도 제한 (50ms마다만 실행) - 더 자주 감지
+      // 얼굴 감지 빈도 제한 (30ms마다만 실행) - MediaPipe는 더 빠름
       final now = DateTime.now();
       if (_lastFaceDetection != null &&
-          now.difference(_lastFaceDetection!).inMilliseconds < 50) {
+          now.difference(_lastFaceDetection!).inMilliseconds < 30) {
         // 최근 감지 결과 재사용
         if (_recentFaceDetected) {
           _recordFaceDetected();
@@ -205,6 +244,18 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
       }
       _lastFaceDetection = now;
 
+      // 1차: MediaPipe Tasks로 눈동자 추적 시도
+      await _mediaEyeTracker.processFrame(image);
+      final mediaPipeResult = _mediaEyeTracker.latestResult;
+
+      if (mediaPipeResult != null && mediaPipeResult.isValid) {
+        print('MediaPipe Tasks 눈동자 추적 성공! 신뢰도: ${mediaPipeResult.confidence}, 랜드마크: ${mediaPipeResult.landmarkCount}개');
+        _analyzeMediaPipeEyeTracking(mediaPipeResult);
+        return;
+      }
+
+      // 2차: ML Kit 백업 사용
+      print('MediaPipe Tasks 실패, ML Kit 백업 사용');
       final inputImage = _convertCameraImage(image);
       if (inputImage == null) {
         print('카메라 이미지 변환 실패');
@@ -227,7 +278,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
         final imageArea = image.width * image.height;
         final faceRatio = faceArea / imageArea;
 
-        if (faceRatio > 0.005) { // 0.5% 이상이면 얼굴로 인정 (매우 관대)
+        if (faceRatio > 0.001) { // 0.1% 이상이면 얼굴로 인정 (극도로 관대)
           print('얼굴 인정 - 비율: ${(faceRatio * 100).toStringAsFixed(2)}%');
           _recentFaceDetected = true;
 
@@ -243,7 +294,9 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
             _analyzeFaceData(face);
           }
         } else {
-          print('얼굴 너무 작음 - 비율: ${(faceRatio * 100).toStringAsFixed(2)}% (0.5% 미만)');
+          print('얼굴 너무 작음 - 비율: ${(faceRatio * 100).toStringAsFixed(2)}% (0.1% 미만) - 대체 분석 사용');
+          // 얼굴이 작아도 대체 분석 시도
+          _analyzeFaceData(face);
           _recentFaceDetected = false;
           _recordNoFaceDetected();
         }
@@ -427,16 +480,32 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   // 얼굴 감지 실패 시 기본 위치 사용 (테스트 진행을 위해)
   void _useDefaultFacePosition() {
     setState(() {
-      _faceDetected = true; // 테스트 진행을 위해 감지된 것으로 처리
+      _faceDetected = false; // 실제로는 감지되지 않음을 유지
     });
 
-    // 화면 중앙을 기본 눈 위치로 설정
-    _irisX = 0.5;
-    _irisY = 0.5;
+    // 현재 테스트 단계에 따른 예상 위치 사용
+    final currentPhase = _getCurrentGazePhase();
+    switch (currentPhase) {
+      case 'up':
+        _irisX = 0.5;
+        _irisY = 0.25; // 위쪽 예상 위치
+        print('기본 위쪽 위치 사용 - (0.5, 0.25), 신뢰도: 0.3');
+        break;
+      case 'down':
+        _irisX = 0.5;
+        _irisY = 0.75; // 아래쪽 예상 위치
+        print('기본 아래쪽 위치 사용 - (0.5, 0.75), 신뢰도: 0.3');
+        break;
+      case 'center':
+      default:
+        _irisX = 0.5;
+        _irisY = 0.5; // 중앙 위치
+        print('기본 중앙 위치 사용 - (0.5, 0.5), 신뢰도: 0.3');
+        break;
+    }
+
     _eyesOpen = true;
     _confidence = 0.3; // 낮은 신뢰도
-
-    print('기본 중앙 위치 사용 - (0.5, 0.5), 신뢰도: 0.3');
 
     if (_currentPhase == TestPhase.gazeTest) {
       _addAnalysisFrame();
@@ -458,12 +527,57 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
     if (_currentPhase != TestPhase.gazeTest) return;
 
     final currentPhase = _getCurrentGazePhase();
+    final now = DateTime.now();
 
     // 시선 방향별 위치 변화 분석
     final gazeDirection = _analyzeGazeDirection(currentPhase);
 
+    // 시선 움직임 속도 계산
+    double gazeVelocity = 0.0;
+    if (_lastGazeTime != null) {
+      final timeDiff = now.difference(_lastGazeTime!).inMilliseconds / 1000.0;
+      if (timeDiff > 0) {
+        final yDiff = (_irisY - _lastGazeY).abs();
+        gazeVelocity = yDiff / timeDiff; // 픽셀/초
+        _gazeVelocities.add(gazeVelocity);
+      }
+    }
+
+    // 시선 범위 업데이트 (인식 실패에 관계없이)
+    if (_faceDetected || _forceContinueMode) {
+      _validGazeFrames++;
+      _minGazeY = math.min(_minGazeY, _irisY);
+      _maxGazeY = math.max(_maxGazeY, _irisY);
+      _currentSetMinY = math.min(_currentSetMinY, _irisY);
+      _currentSetMaxY = math.max(_currentSetMaxY, _irisY);
+
+      // 총 이동 거리 누적
+      if (_lastGazeTime != null) {
+        final distance = math.sqrt(
+          math.pow(_irisX - (_frameAnalyses.isNotEmpty ? _frameAnalyses.last['iris_x'] : 0.5), 2) +
+          math.pow(_irisY - (_frameAnalyses.isNotEmpty ? _frameAnalyses.last['iris_y'] : 0.5), 2)
+        );
+        _totalGazeDistance += distance;
+      }
+    }
+
+    // 강제 진행 모드 관리
+    if (!_faceDetected) {
+      _failedFramesCount++;
+      if (_failedFramesCount >= kMaxFailedFrames) {
+        _forceContinueMode = true;
+        print('⚠️ 강제 진행 모드 활성화 - 연속 ${_failedFramesCount}프레임 실패');
+      }
+    } else {
+      _failedFramesCount = 0;
+      if (_forceContinueMode && _confidence > 0.5) {
+        _forceContinueMode = false;
+        print('✅ 강제 진행 모드 해제 - 인식 회복');
+      }
+    }
+
     final analysisData = {
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'timestamp': now.millisecondsSinceEpoch,
       'iris_x': _irisX,
       'iris_y': _irisY,
       'eye_open': _eyesOpen,
@@ -475,38 +589,81 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
       'gaze_direction': gazeDirection,
       'stable': _lastStable,
       'eye_position_quality': _confidence > 0.8 ? 'high' : (_confidence > 0.5 ? 'medium' : 'low'),
+      'gaze_velocity': gazeVelocity,
+      'force_continue_mode': _forceContinueMode,
+      'failed_frames_count': _failedFramesCount,
+      'current_min_y': _currentSetMinY,
+      'current_max_y': _currentSetMaxY,
+      'gaze_range': _currentSetMaxY - _currentSetMinY,
     };
 
     _frameAnalyses.add(analysisData);
 
+    // 시간과 위치 업데이트
+    _lastGazeTime = now;
+    _lastGazeY = _irisY;
+
     // 실시간 피드백 (디버깅용)
     if (_frameAnalyses.length % 20 == 0) { // 20프레임마다
-      print('시선추적 중간 결과 - 단계: $currentPhase, Y위치: ${_irisY.toStringAsFixed(3)}, 방향: $gazeDirection');
+      final avgVelocity = _gazeVelocities.isNotEmpty ?
+          _gazeVelocities.reduce((a, b) => a + b) / _gazeVelocities.length : 0.0;
+      print('📊 시선추적 분석 - 단계: $currentPhase, Y: ${_irisY.toStringAsFixed(3)}, 범위: ${(_currentSetMaxY - _currentSetMinY).toStringAsFixed(3)}, 속도: ${avgVelocity.toStringAsFixed(3)}, 강제모드: $_forceContinueMode');
     }
+  }
+
+  /// 시선 분석 데이터 초기화 및 리셋
+  void _resetGazeAnalysis() {
+    _minGazeY = 1.0;
+    _maxGazeY = 0.0;
+    _lastGazeY = 0.5;
+    _lastGazeTime = null;
+    _totalGazeDistance = 0.0;
+    _validGazeFrames = 0;
+    _forceContinueMode = false;
+    _failedFramesCount = 0;
+    _gazeVelocities.clear();
+    _resetCurrentSetRange();
+    print('🔄 시선 분석 데이터 초기화 완료');
+  }
+
+  /// 현재 세트의 시선 범위 리셋
+  void _resetCurrentSetRange() {
+    _currentSetMinY = 1.0;
+    _currentSetMaxY = 0.0;
+    print('📊 세트 ${_currentSet + 1} 시선 범위 리셋');
   }
 
   // 시선 방향 분석 (위/아래 움직임 감지)
   String _analyzeGazeDirection(String currentPhase) {
-    if (_frameAnalyses.length < 5) return 'unknown'; // 충분한 데이터 필요
-
-    // 최근 5프레임의 Y 좌표 평균
-    final startIndex = (_frameAnalyses.length - 5).clamp(0, _frameAnalyses.length);
-    final recentFrames = _frameAnalyses.sublist(startIndex);
-    final recentYPositions = recentFrames.map((frame) => frame['iris_y'] as double).toList();
-    final avgRecentY = recentYPositions.reduce((a, b) => a + b) / recentYPositions.length;
-
-    // 현재 Y 위치와 비교
-    final yDiff = _irisY - avgRecentY;
-    const threshold = 0.02; // 2% 변화 감지
+    // 절대 위치 기반 분석 (더 직관적)
+    const upThreshold = 0.4;    // Y < 0.4면 위쪽으로 간주
+    const downThreshold = 0.6;  // Y > 0.6이면 아래쪽으로 간주
+    const centerRange = 0.1;    // 중앙 ±0.1 범위
 
     if (currentPhase == 'up') {
-      if (yDiff < -threshold) return 'looking_up';      // Y가 작아짐 = 위로
-      if (yDiff > threshold) return 'not_following';    // 아래로 가면 안됨
+      if (_irisY < upThreshold) {
+        return 'looking_up';
+      } else if (_irisY > downThreshold) {
+        return 'not_following';
+      } else {
+        return 'moving_to_up';
+      }
     } else if (currentPhase == 'down') {
-      if (yDiff > threshold) return 'looking_down';     // Y가 커짐 = 아래로
-      if (yDiff < -threshold) return 'not_following';   // 위로 가면 안됨
+      if (_irisY > downThreshold) {
+        return 'looking_down';
+      } else if (_irisY < upThreshold) {
+        return 'not_following';
+      } else {
+        return 'moving_to_down';
+      }
     } else if (currentPhase == 'center') {
-      if (yDiff.abs() < threshold) return 'centered';   // 중앙 유지
+      if (_irisY >= (0.5 - centerRange) && _irisY <= (0.5 + centerRange)) {
+        return 'centered';
+      } else if (_irisY < 0.5) {
+        return 'above_center';
+      } else {
+        return 'below_center';
+      }
     }
 
     return 'neutral';
@@ -582,6 +739,9 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
 
     _testStartTime = DateTime.now();
 
+    // 시선 범위 분석 데이터 초기화
+    _resetGazeAnalysis();
+
     // 비디오 녹화 시작 (추후 구현)
     _startVideoRecording();
 
@@ -592,6 +752,9 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   }
 
   void _startGazeSet() async {
+    // 각 세트 시작 시 범위 리셋
+    _resetCurrentSetRange();
+
     await _speak('${_currentSet + 1}번째 세트를 시작합니다.');
     await Future.delayed(const Duration(seconds: 1));
 
@@ -841,9 +1004,11 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
       child: Stack(
         children: [
           // 메인 시선 가이드
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
               // 세트 정보 및 진행률
               _buildProgressHeader(),
               const SizedBox(height: 30),
@@ -858,7 +1023,8 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
 
               // 실시간 피드백
               _buildRealTimeFeedback(gazeDirection),
-            ],
+              ],
+            ),
           ),
 
           // 눈동자 추적 오버레이
@@ -1030,70 +1196,220 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
     );
   }
 
-  // 실시간 피드백
+  // 실시간 피드백 (개선됨)
   Widget _buildRealTimeFeedback(String gazeDirection) {
     String feedbackText = '';
+    String detailText = '';
     Color feedbackColor = Colors.white;
+    IconData feedbackIcon = Icons.info;
 
-    switch (gazeDirection) {
-      case 'looking_up':
-        feedbackText = '✓ 위를 잘 보고 있습니다';
-        feedbackColor = Colors.green;
-        break;
-      case 'looking_down':
-        feedbackText = '✓ 아래를 잘 보고 있습니다';
-        feedbackColor = Colors.green;
-        break;
-      case 'centered':
-        feedbackText = '✓ 중앙을 잘 보고 있습니다';
-        feedbackColor = Colors.green;
-        break;
-      case 'not_following':
-        feedbackText = '⚠️ 지시된 방향을 봐주세요';
-        feedbackColor = Colors.orange;
-        break;
-      default:
-        feedbackText = _faceDetected ? '눈동자 추적 중...' : '얼굴을 화면에 맞춰주세요';
-        feedbackColor = _faceDetected ? Colors.blue : Colors.red;
+    // 인식 상태에 따른 기본 정보
+    if (!_faceDetected) {
+      feedbackText = '얼굴을 화면에 맞춰주세요';
+      detailText = '카메라에 얼굴이 잘 보이도록 조정해주세요';
+      feedbackColor = Colors.red;
+      feedbackIcon = Icons.face_retouching_off;
+    } else if (_confidence < 0.5) {
+      feedbackText = '인식이 불안정합니다';
+      detailText = '조명을 확인하고 얼굴을 더 가까이 해주세요';
+      feedbackColor = Colors.orange;
+      feedbackIcon = Icons.visibility_off;
+    } else {
+      // 시선 방향에 따른 피드백
+      final currentRange = _currentSetMaxY - _currentSetMinY;
+      final avgVelocity = _gazeVelocities.isNotEmpty ?
+          _gazeVelocities.reduce((a, b) => a + b) / _gazeVelocities.length : 0.0;
+
+      switch (gazeDirection) {
+        case 'looking_up':
+          feedbackText = '✓ 위쪽 시선 인식 중';
+          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 속도: ${(avgVelocity * 100).toStringAsFixed(1)}% | ${_forceContinueMode ? "강제진행" : "정상"}';
+          feedbackColor = Colors.green;
+          feedbackIcon = Icons.keyboard_arrow_up;
+          break;
+        case 'looking_down':
+          feedbackText = '✓ 아래쪽 시선 인식 중';
+          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 속도: ${(avgVelocity * 100).toStringAsFixed(1)}% | ${_forceContinueMode ? "강제진행" : "정상"}';
+          feedbackColor = Colors.green;
+          feedbackIcon = Icons.keyboard_arrow_down;
+          break;
+        case 'centered':
+          feedbackText = '✓ 중앙 시선 인식 중';
+          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 속도: ${(avgVelocity * 100).toStringAsFixed(1)}% | ${_forceContinueMode ? "강제진행" : "정상"}';
+          feedbackColor = Colors.green;
+          feedbackIcon = Icons.center_focus_strong;
+          break;
+        case 'not_following':
+          feedbackText = _forceContinueMode ? '⚠️ 강제 진행 중' : '⚠️ 지시된 방향을 봐주세요';
+          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 실패: ${_failedFramesCount}프레임';
+          feedbackColor = Colors.orange;
+          feedbackIcon = _forceContinueMode ? Icons.fast_forward : Icons.my_location;
+          break;
+        default:
+          feedbackText = _forceContinueMode ? '⚠️ 강제 진행 모드' : '눈동자 추적 중...';
+          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 신뢰도: ${(_confidence * 100).toInt()}%';
+          feedbackColor = _forceContinueMode ? Colors.red : Colors.blue;
+          feedbackIcon = _forceContinueMode ? Icons.warning : Icons.visibility;
+      }
     }
 
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: feedbackColor.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: feedbackColor.withOpacity(0.5)),
+        color: feedbackColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: feedbackColor.withOpacity(0.3), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: feedbackColor.withOpacity(0.2),
+            blurRadius: 8,
+            spreadRadius: 1,
+          ),
+        ],
       ),
-      child: Text(
-        feedbackText,
-        style: TextStyle(
-          color: feedbackColor,
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-        ),
+      child: Column(
+        children: [
+          // 메인 피드백
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                feedbackIcon,
+                color: feedbackColor,
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                feedbackText,
+                style: TextStyle(
+                  color: feedbackColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          // 상세 정보
+          if (detailText.isNotEmpty) ...[
+            SizedBox(height: 6),
+            Text(
+              detailText,
+              style: TextStyle(
+                color: feedbackColor.withOpacity(0.8),
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
       ),
     );
   }
 
-  // 눈동자 추적 오버레이
+  // 눈동자 추적 오버레이 (개선됨)
   Widget _buildEyeTrackingOverlay() {
+    final isStable = _confidence > 0.7;
+    final statusColor = _faceDetected ? (isStable ? Colors.green : Colors.orange) : Colors.red;
+    final statusText = _faceDetected ? (isStable ? '인식 중' : '불안정') : '감지 안됨';
+
     return Positioned(
       right: 20,
       bottom: 20,
-      child: Container(
-        width: 100,
-        height: 100,
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _faceDetected ? Colors.green : Colors.red,
-            width: 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // 실시간 상태 표시
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: statusColor.withOpacity(0.3),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _faceDetected ? (isStable ? Icons.visibility : Icons.visibility_off) : Icons.face_retouching_off,
+                  color: Colors.white,
+                  size: 16,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  statusText,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        child: CustomPaint(
-          painter: EyePositionPainter(_irisX, _irisY, _confidence, _faceDetected),
-        ),
+          SizedBox(height: 8),
+
+          // 눈동자 위치 표시기
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.8),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: statusColor,
+                width: 3,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: statusColor.withOpacity(0.3),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                // 배경 격자
+                CustomPaint(
+                  size: Size(120, 120),
+                  painter: _GridPainter(),
+                ),
+                // 눈동자 위치
+                CustomPaint(
+                  painter: EyePositionPainter(_irisX, _irisY, _confidence, _faceDetected),
+                ),
+                // 신뢰도 텍스트
+                if (_faceDetected)
+                  Positioned(
+                    bottom: 4,
+                    right: 4,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${(_confidence * 100).toInt()}%',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1424,11 +1740,44 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
     }
   }
 
+  // MediaPipe Tasks 눈동자 추적 분석
+  void _analyzeMediaPipeEyeTracking(EyeTrackingResult result) {
+    setState(() {
+      _faceDetected = result.faceDetected;
+    });
+
+    _recentFaceDetected = result.faceDetected;
+
+    // 정규화된 시선 위치 사용
+    final normalizedGaze = result.normalizedGaze;
+
+    if (normalizedGaze != null) {
+      setState(() {
+        _irisX = normalizedGaze['x']!;
+        _irisY = normalizedGaze['y']!;
+        _eyesOpen = true;
+        _confidence = result.confidence;
+      });
+
+      print('MediaPipe Tasks 시선 위치: (${_irisX.toStringAsFixed(3)}, ${_irisY.toStringAsFixed(3)}), 신뢰도: ${_confidence.toStringAsFixed(3)}, 랜드마크: ${result.landmarkCount}개');
+    } else {
+      print('MediaPipe Tasks: 시선 위치 계산 실패');
+      _recordNoFaceDetected();
+      return;
+    }
+
+    // 시선추적 테스트 중일 때만 분석 데이터 저장
+    if (_currentPhase == TestPhase.gazeTest) {
+      _addAnalysisFrame();
+    }
+  }
+
   @override
   void dispose() {
     _phaseTimer?.cancel();
     _analysisTimer?.cancel();
     _cameraController?.dispose();
+    _mediaEyeTracker.dispose(); // MediaPipe 눈동자 추적 정리
     _faceDetector.close();
     _flutterTts.stop();
     super.dispose();
@@ -1440,4 +1789,43 @@ enum TestPhase {
   faceAlignment,
   gazeTest,
   completed,
+}
+
+// 격자 배경 그리기
+class _GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.1)
+      ..strokeWidth = 0.5;
+
+    // 세로선
+    for (int i = 1; i < 4; i++) {
+      final x = size.width * i / 4;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+
+    // 가로선
+    for (int i = 1; i < 4; i++) {
+      final y = size.height * i / 4;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+
+    // 중앙 십자선
+    paint.color = Colors.white.withOpacity(0.3);
+    paint.strokeWidth = 1.0;
+    canvas.drawLine(
+      Offset(size.width / 2, 0),
+      Offset(size.width / 2, size.height),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(0, size.height / 2),
+      Offset(size.width, size.height / 2),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }

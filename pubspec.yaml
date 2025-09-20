@@ -31,7 +31,7 @@ dependencies:
 
   # 기타 유틸리티
   shared_preferences: ^2.2.2
-  fluttertoast: ^8.2.4
+  # fluttertoast: ^8.2.8  # 임시 비활성화 - Android 빌드 호환성 문제
   
   # 카메라 및 마이크 권한
   permission_handler: ^11.0.1
@@ -41,7 +41,7 @@ dependencies:
   # 애니메이션
   lottie: ^2.7.0
   
-  # MediaPipe 및 컴퓨터 비전
+  # 컴퓨터 비전 - ML Kit 최적화
   google_mlkit_face_detection: ^0.11.0
   
   # 오디오 녹음 및 재생
