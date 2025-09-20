@@ -232,7 +232,7 @@ class HomeScreen extends StatelessWidget {
                                           ),
                                           const SizedBox(height: 8),
                                           Text(
-                                                '손가락 움직임 → 음성 분석 → 시선 추적',
+                                                '시선 추적 → 손가락 움직임 → 음성 분석',
                                                 style: TextStyle(
                                                       color: Colors.white.withOpacity(0.8),
                                                       fontSize: 12,

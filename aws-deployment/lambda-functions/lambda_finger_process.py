@@ -25,13 +25,23 @@ import traceback
 s3_client = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 
-# 환경 변수
+# 통합 환경 변수 설정 (API 문서 기준 정정)
 S3_BUCKET = os.environ.get('S3_BUCKET', 'seoul-ht-09')
-S3_PREFIX = os.environ.get('S3_PREFIX', 'parasol/')
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE', 'finger-tapping-results')
+S3_FINGER_TAPPING_PREFIX = os.environ.get('S3_FINGER_TAPPING_PREFIX', 'finger-tapping')
 
-# DynamoDB 테이블 참조
-table = dynamodb.Table(DYNAMODB_TABLE)
+# DynamoDB 테이블 (API 문서 기준 - 모든 분석은 analyses 테이블 사용)
+ANALYSES_TABLE = os.environ.get('ANALYSES_TABLE', 'analyses')
+
+# SQS 큐 (API 문서 기준 정정)
+FINGER_TAPPING_QUEUE_URL = os.environ.get('FINGER_TAPPING_QUEUE_URL', 'https://sqs.us-west-1.amazonaws.com/327784329358/finger-tapping-queue.fifo')
+
+# 분석 설정
+MODEL_PATH = os.environ.get('MODEL_PATH', '/opt/models/best_pipeline_recall_AdaBoost.joblib')
+MAX_PROCESSING_TIME_SECONDS = int(os.environ.get('MAX_PROCESSING_TIME_SECONDS', '600'))
+DEFAULT_THRESHOLD = float(os.environ.get('DEFAULT_THRESHOLD', '0.5'))
+
+# DynamoDB 테이블 참조 (API 문서 기준)
+table = dynamodb.Table(ANALYSES_TABLE)
 
 # MediaPipe 초기화
 try:
@@ -48,8 +58,8 @@ except ImportError:
 try:
     from joblib import load
     import feature_extraction as fe
-    # 모델은 /opt/에서 로드 (Lambda 레이어에 포함)
-    MODEL_PATH = "best_pipeline_recall_AdaBoost.joblib"
+    # 모델 경로는 환경변수에서 설정
+    pass  # MODEL_PATH는 이미 상단에서 정의됨
 except ImportError:
     load = None
     fe = None
@@ -61,8 +71,13 @@ _model = None
 def get_model():
     """모델 싱글톤"""
     global _model
-    if _model is None and load is not None and os.path.exists(MODEL_PATH):
-        _model = load(MODEL_PATH)
+    if _model is None and load is not None:
+        # 환경변수에서 설정된 모델 경로 사용
+        model_path = MODEL_PATH or "best_pipeline_recall_AdaBoost.joblib"
+        if os.path.exists(model_path):
+            _model = load(model_path)
+        else:
+            print(f"모델 파일을 찾을 수 없습니다: {model_path}")
     return _model
 
 # 기존 코드에서 핵심 함수들 가져오기
@@ -384,40 +399,54 @@ def lambda_handler(event, context):
                     # 진행률 업데이트 (80%)
                     update_progress(analysis_id, 80, "결과 저장 중...")
                     
-                    # 결과 CSV를 S3에 저장
+                    # 결과 CSV를 S3에 저장 (API 문서 기준 경로)
+                    csv_s3_key = None
                     if 'raw_features' in result:
                         csv_df = pd.DataFrame(result['raw_features'])
                         csv_buffer = io.StringIO()
                         csv_df.to_csv(csv_buffer, index=False)
                         csv_data = csv_buffer.getvalue().encode('utf-8')
-                        
-                        csv_s3_key = f"{S3_PREFIX}results/{user_id}/finger-tapping/{analysis_id}/analysis_results.csv"
+
+                        csv_s3_key = f"{S3_FINGER_TAPPING_PREFIX}/results/{analysis_id}/analysis.csv"
                         s3_client.put_object(
                             Bucket=s3_bucket,
                             Key=csv_s3_key,
                             Body=csv_data,
                             ContentType='text/csv'
                         )
-                        result['csv_s3_key'] = csv_s3_key
-                        
+
                         # raw_features는 DynamoDB에 저장하지 않음 (크기 제한)
                         del result['raw_features']
+
+                    # 처리된 데이터 JSON도 S3에 저장
+                    processed_s3_key = f"{S3_FINGER_TAPPING_PREFIX}/processed/{analysis_id}/landmarks.json"
+                    s3_client.put_object(
+                        Bucket=s3_bucket,
+                        Key=processed_s3_key,
+                        Body=json.dumps(result, ensure_ascii=False, indent=2).encode('utf-8'),
+                        ContentType='application/json'
+                    )
                     
-                    # 최종 결과를 DynamoDB에 저장
+                    # 최종 결과를 DynamoDB에 저장 (API 문서 기준)
+                    s3_paths = {
+                        'processed': processed_s3_key
+                    }
+                    if csv_s3_key:
+                        s3_paths['results'] = csv_s3_key
+
                     table.update_item(
-                        Key={'analysisId': analysis_id},
-                        UpdateExpression='SET #status = :status, #result = :result, #progress = :progress, #completed_at = :completed_at',
+                        Key={'analysis_id': analysis_id},  # API 문서 기준 필드명
+                        UpdateExpression='SET #status = :status, results = :results, #progress = :progress, updated_at = :updated_at, s3_paths = :s3_paths',
                         ExpressionAttributeNames={
                             '#status': 'status',
-                            '#result': 'result',
-                            '#progress': 'progress',
-                            '#completed_at': 'completed_at'
+                            '#progress': 'progress'
                         },
                         ExpressionAttributeValues={
                             ':status': 'completed',
-                            ':result': result,
+                            ':results': result,
                             ':progress': 100,
-                            ':completed_at': int(time.time())
+                            ':updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                            ':s3_paths': s3_paths
                         }
                     )
                     
@@ -434,35 +463,30 @@ def lambda_handler(event, context):
             print(f"Traceback: {traceback.format_exc()}")
             
             if analysis_id:
-                # 실패 상태로 업데이트
+                # 실패 상태로 업데이트 (API 문서 기준)
                 table.update_item(
-                    Key={'analysisId': analysis_id},
-                    UpdateExpression='SET #status = :status, #error = :error, #failed_at = :failed_at',
+                    Key={'analysis_id': analysis_id},  # API 문서 기준 필드명
+                    UpdateExpression='SET #status = :status, error_message = :error, updated_at = :updated_at',
                     ExpressionAttributeNames={
-                        '#status': 'status',
-                        '#error': 'error',
-                        '#failed_at': 'failed_at'
+                        '#status': 'status'
                     },
                     ExpressionAttributeValues={
                         ':status': 'failed',
                         ':error': error_message,
-                        ':failed_at': int(time.time())
+                        ':updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
                     }
                 )
 
 def update_progress(analysis_id: str, progress: int, message: str):
-    """진행률 업데이트"""
+    """진행률 업데이트 (API 문서 기준)"""
     try:
         table.update_item(
-            Key={'analysisId': analysis_id},
-            UpdateExpression='SET #progress = :progress, #progress_message = :message',
-            ExpressionAttributeNames={
-                '#progress': 'progress',
-                '#progress_message': 'progress_message'
-            },
+            Key={'analysis_id': analysis_id},  # API 문서 기준 필드명
+            UpdateExpression='SET progress = :progress, progress_message = :message, updated_at = :updated_at',
             ExpressionAttributeValues={
                 ':progress': progress,
-                ':message': message
+                ':message': message,
+                ':updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             }
         )
     except Exception as e:

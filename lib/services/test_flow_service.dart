@@ -34,44 +34,64 @@ class TestFlowService {
     Map<String, dynamic>? additionalMetadata,
   }) async {
     if (_currentSessionId == null || _currentUserId == null) {
+      print('TestFlowService: 활성 세션이 없습니다');
       return {'error': 'No active test session'};
     }
 
     try {
-      // 1. 서버로 시선추적 결과 전송
-      final submitResult = await _serverCompatibility.submitResults(
-        sessionId: _currentSessionId!,
-        userId: _currentUserId!,
-        frameAnalyses: frameAnalyses,
-        testDuration: testDuration,
-        totalFrames: totalFrames,
-        processingFps: processingFps,
-        additionalMetadata: additionalMetadata,
-      );
+      print('TestFlowService: 시선추적 결과 처리 시작');
 
-      if (submitResult.containsKey('error')) {
-        return submitResult;
-      }
-
-      // 2. 분석 결과 저장
+      // 1. 분석 결과 저장 (로컬)
       _eyeTestResults = _serverCompatibility.convertToEyePyFormat(
         frameAnalyses: frameAnalyses,
         testDuration: testDuration,
         totalFrames: totalFrames,
         processingFps: processingFps,
       );
+      print('TestFlowService: 분석 결과 변환 완료 - PSP 감지: ${_eyeTestResults!['psp_detected']}');
 
-      // 3. Finger-tapping 테스트 준비 알림
-      final transitionResult = await _serverCompatibility.proceedToFingerTapping(
-        sessionId: _currentSessionId!,
-        userId: _currentUserId!,
-        eyeTestResults: _eyeTestResults!,
-      );
+      // 2. 서버로 시선추적 결과 전송 (타임아웃 적용)
+      try {
+        print('TestFlowService: 서버로 결과 전송 중...');
+        final submitResult = await _serverCompatibility.submitResults(
+          sessionId: _currentSessionId!,
+          userId: _currentUserId!,
+          frameAnalyses: frameAnalyses,
+          testDuration: testDuration,
+          totalFrames: totalFrames,
+          processingFps: processingFps,
+          additionalMetadata: additionalMetadata,
+        ).timeout(const Duration(seconds: 15));
 
+        print('TestFlowService: 서버 전송 결과: $submitResult');
+
+        if (submitResult.containsKey('error')) {
+          print('TestFlowService: 서버 전송 실패, 로컬 결과 사용');
+          // 서버 전송 실패해도 로컬 결과로 계속 진행
+        }
+      } catch (e) {
+        print('TestFlowService: 서버 전송 예외 (무시하고 계속 진행): $e');
+        // 서버 연결 실패해도 계속 진행
+      }
+
+      // 3. Finger-tapping 테스트 준비 알림 (선택적)
+      try {
+        print('TestFlowService: Finger-tapping 전환 알림 중...');
+        final transitionResult = await _serverCompatibility.proceedToFingerTapping(
+          sessionId: _currentSessionId!,
+          userId: _currentUserId!,
+          eyeTestResults: _eyeTestResults!,
+        ).timeout(const Duration(seconds: 10));
+        print('TestFlowService: 전환 알림 결과: $transitionResult');
+      } catch (e) {
+        print('TestFlowService: 전환 알림 실패 (무시하고 계속 진행): $e');
+        // 전환 알림 실패해도 계속 진행
+      }
+
+      print('TestFlowService: 시선추적 결과 처리 완료');
       return {
         'success': true,
         'eye_results': _eyeTestResults,
-        'transition_result': transitionResult,
         'session_id': _currentSessionId,
         'ready_for_finger_test': true,
       };

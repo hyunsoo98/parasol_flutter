@@ -65,8 +65,8 @@ class ParasolAuthService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse(AWSConfig.getRegisterUrl()),
-        headers: AWSConfig.defaultHeaders,
+        Uri.parse(AwsConfig.getRegisterUrl()),
+        headers: AwsConfig.defaultHeaders,
         body: jsonEncode({
           'email': email,
           'password': password,
@@ -105,8 +105,8 @@ class ParasolAuthService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse(AWSConfig.getLoginUrl()),
-        headers: AWSConfig.defaultHeaders,
+        Uri.parse(AwsConfig.getLoginUrl()),
+        headers: AwsConfig.defaultHeaders,
         body: jsonEncode({
           'email': email,
           'password': password,
@@ -184,7 +184,7 @@ class ParasolAuthService {
 
   // 인증 헤더 생성
   Map<String, String> getAuthHeaders() {
-    final headers = Map<String, String>.from(AWSConfig.defaultHeaders);
+    final headers = Map<String, String>.from(AwsConfig.defaultHeaders);
     if (_sessionToken != null) {
       headers['Authorization'] = 'Bearer $_sessionToken';
     }

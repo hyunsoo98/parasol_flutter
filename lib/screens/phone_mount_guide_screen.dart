@@ -3,6 +3,9 @@ import '../services/diagnosis_flow_service.dart';
 import 'finger_tapping_guide_screen.dart';
 import 'voice_analysis_screen.dart';
 import 'camera_setup_screen.dart';
+import 'structured_eye_test_screen.dart';
+import '../services/test_flow_service.dart';
+import '../services/api_service.dart';
 
 class PhoneMountGuideScreen extends StatefulWidget {
   final TestStep nextStep;
@@ -187,12 +190,22 @@ class _PhoneMountGuideScreenState extends State<PhoneMountGuideScreen>
             ),
           ),
           TextButton(
-            onPressed: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const CameraSetupScreen(),
-              ),
-            ),
+            onPressed: () {
+              // 건너뛰기도 시선추적으로 직접 이동
+              final testFlowService = TestFlowService(apiService: ApiService());
+              final userId = 'guest_${DateTime.now().millisecondsSinceEpoch}';
+              testFlowService.startNewTestSession(userId);
+
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => StructuredEyeTestScreen(
+                    userId: userId,
+                    testFlowService: testFlowService,
+                  ),
+                ),
+              );
+            },
             child: const Text(
               '건너뛰기',
               style: TextStyle(
@@ -443,10 +456,18 @@ class _PhoneMountGuideScreenState extends State<PhoneMountGuideScreen>
   void _navigateToNextScreen() {
     switch (widget.nextStep) {
       case TestStep.EYE_TRACKING:
+        // 시선추적은 이제 StructuredEyeTestScreen에서 직접 처리
+        final testFlowService = TestFlowService(apiService: ApiService());
+        final userId = 'guest_${DateTime.now().millisecondsSinceEpoch}';
+        testFlowService.startNewTestSession(userId);
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const CameraSetupScreen(),
+            builder: (context) => StructuredEyeTestScreen(
+              userId: userId,
+              testFlowService: testFlowService,
+            ),
           ),
         );
         break;

@@ -25,7 +25,7 @@ void main() async {
 Future<void> _initializeApp() async {
   try {
     // Initialize AWS configuration
-    AWSConfig.initialize();
+    AwsConfig.initialize();
     print('Successfully initialized AWS configuration 🎉');
 
     // ParasolAuth는 CustomAuthProvider에서 초기화됨

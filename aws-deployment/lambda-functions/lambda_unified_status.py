@@ -25,11 +25,19 @@ class DecimalEncoder(json.JSONEncoder):
 dynamodb = boto3.resource('dynamodb')
 s3_client = boto3.client('s3')
 
-# 환경 변수
+# 통합 환경 변수 설정 (API 문서 기준 정정)
 S3_BUCKET = os.environ.get('S3_BUCKET', 'seoul-ht-09')
-S3_PREFIX = os.environ.get('S3_PREFIX', 'parasol/')
-EYE_TRACKING_TABLE = os.environ.get('EYE_TRACKING_TABLE', 'eye-tracking-results')
-FINGER_TAPPING_TABLE = os.environ.get('FINGER_TAPPING_TABLE', 'finger-tapping-results')
+S3_EYE_TRACKING_PREFIX = os.environ.get('S3_EYE_TRACKING_PREFIX', 'eye-tracking/results')  # JSON 결과만
+S3_FINGER_TAPPING_PREFIX = os.environ.get('S3_FINGER_TAPPING_PREFIX', 'finger-tapping')
+S3_VOICE_ANALYSIS_PREFIX = os.environ.get('S3_VOICE_ANALYSIS_PREFIX', 'voice-analysis')
+
+# DynamoDB 테이블 (API 문서 기준 - 모든 분석은 analyses 테이블 사용)
+ANALYSES_TABLE = os.environ.get('ANALYSES_TABLE', 'analyses')
+DIAGNOSIS_SESSIONS_TABLE = os.environ.get('DIAGNOSIS_SESSIONS_TABLE', 'diagnosis_sessions')
+
+# Presigned URL 설정
+PRESIGNED_URL_EXPIRATION_SECONDS = int(os.environ.get('PRESIGNED_URL_EXPIRATION_SECONDS', '3600'))
+MAX_HISTORY_RECORDS = int(os.environ.get('MAX_HISTORY_RECORDS', '100'))
 
 def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
@@ -87,176 +95,153 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
 
 def get_analysis_status(analysis_id: str, analysis_type: str, include_result: bool, generate_download_url: bool, is_results_endpoint: bool, headers: Dict[str, str]) -> Dict[str, Any]:
     """특정 분석의 상태 및 결과 조회"""
-    
-    # analysis_type이 명시되지 않은 경우 두 테이블에서 모두 검색
-    tables_to_check = []
-    if analysis_type == 'eye-tracking' or analysis_type == 'eye-tracking-results':
-        tables_to_check = [(EYE_TRACKING_TABLE, 'eye-tracking')]
-    elif analysis_type == 'finger-tapping':
-        tables_to_check = [(FINGER_TAPPING_TABLE, 'finger-tapping')]
-    else:
-        # 타입이 명시되지 않은 경우 두 테이블 모두 확인
-        tables_to_check = [
-            (EYE_TRACKING_TABLE, 'eye-tracking'),
-            (FINGER_TAPPING_TABLE, 'finger-tapping')
-        ]
-    
-    for table_name, detected_type in tables_to_check:
-        try:
-            table = dynamodb.Table(table_name)
-            response = table.get_item(Key={'analysisId': analysis_id})
+
+    try:
+        # API 문서 기준: 단일 analyses 테이블 사용
+        table = dynamodb.Table(ANALYSES_TABLE)
+        response = table.get_item(Key={'analysis_id': analysis_id})  # API 문서 기준 필드명
             
-            if 'Item' in response:
-                item = response['Item']
+        if 'Item' in response:
+            item = response['Item']
+            detected_type = item.get('analysis_type', 'unknown')
+
+            # 기본 응답 구성 (API 문서 기준 필드명)
+            result = {
+                'analysis_id': analysis_id,  # API 문서 기준
+                'user_id': item.get('user_id', 'unknown'),
+                'analysis_type': detected_type,
+                'status': item.get('status', 'unknown'),
+                'created_at': item.get('created_at'),
+                'updated_at': item.get('updated_at'),
+                'progress': item.get('progress', 0),
+                'progress_message': item.get('progress_message', '')
+            }
                 
-                # 기본 응답 구성
-                result = {
-                    'analysisId': analysis_id,
-                    'user_id': item.get('user_id', 'unknown'),
-                    'analysis_type': item.get('analysis_type', detected_type),
-                    'status': item.get('status', 'unknown'),
-                    'timestamp': item.get('timestamp'),
-                    'progress': item.get('progress', 0),
-                    'progress_message': item.get('progress_message', '')
-                }
+            # 상태별 추가 정보
+            if item.get('status') == 'processing':
+                result['estimated_completion'] = estimate_completion_time(item)
+
+            elif item.get('status') == 'completed':
+                if include_result and 'results' in item:
+                    analysis_result = item['results']
+                    result['results'] = analysis_result
+
+                    # 분석 유형별 결과 요약
+                    if detected_type == 'eye-tracking':
+                        result['summary'] = create_eye_tracking_summary(analysis_result)
+                    elif detected_type == 'finger-tapping':
+                        result['summary'] = create_finger_tapping_summary(analysis_result)
+
+                # S3 다운로드 URL 생성 (API 문서 기준)
+                if generate_download_url and 's3_paths' in item:
+                    s3_paths = item['s3_paths']
+                    result['download_urls'] = {}
+
+                    # 각 타입별 결과 파일 URL
+                    if 'results' in s3_paths:
+                        result['download_urls']['results'] = generate_presigned_url(
+                            s3_paths['results'],
+                            'application/json' if detected_type == 'eye-tracking' else 'text/csv'
+                        )
+                    if 'processed' in s3_paths:
+                        result['download_urls']['processed'] = generate_presigned_url(
+                            s3_paths['processed'], 'application/json'
+                        )
+
+            elif item.get('status') == 'failed':
+                result['error_message'] = item.get('error_message', '알 수 없는 오류')
                 
-                # 상태별 추가 정보
-                if item.get('status') == 'processing':
-                    result['estimated_completion'] = estimate_completion_time(item)
-                    
-                elif item.get('status') == 'completed':
-                    result['completed_at'] = item.get('completed_at')
-                    
-                    if include_result and 'result' in item:
-                        analysis_result = item['result']
-                        result['result'] = analysis_result
-                        
-                        # 분석 유형별 결과 요약
-                        if detected_type == 'eye-tracking':
-                            result['summary'] = create_eye_tracking_summary(analysis_result)
-                        elif detected_type == 'finger-tapping':
-                            result['summary'] = create_finger_tapping_summary(analysis_result)
-                    
-                    # CSV 다운로드 URL 생성
-                    if generate_download_url and 'csv_s3_key' in item.get('result', {}):
-                        csv_s3_key = item['result']['csv_s3_key']
-                        result['download_urls'] = {
-                            'csv': generate_presigned_url(csv_s3_key, 'text/csv')
-                        }
-                        
-                elif item.get('status') == 'failed':
-                    result['failed_at'] = item.get('failed_at')
-                    result['error'] = item.get('error', '알 수 없는 오류')
-                
-                # 파일 정보
-                if 'file_size' in item:
-                    result['file_info'] = {
-                        'size': item['file_size'],
-                        's3_key': item.get('s3_key')
-                    }
-                
-                # 분석 파라미터
-                if 'parameters' in item:
-                    result['parameters'] = item['parameters']
-                
-                # results 엔드포인트인 경우 결과만 반환
-                if is_results_endpoint and item.get('status') == 'completed':
-                    return {
-                        'statusCode': 200,
-                        'headers': headers,
-                        'body': json.dumps({
-                            'success': True,
-                            'analysisId': analysis_id,
-                            'analysis_type': detected_type,
-                            'result': result.get('result'),
-                            'summary': result.get('summary'),
-                            'download_urls': result.get('download_urls')
-                        }, cls=DecimalEncoder)
-                    }
-                
+            # S3 경로 정보
+            if 's3_paths' in item:
+                result['s3_paths'] = item['s3_paths']
+
+            # 분석 파라미터
+            if 'parameters' in item:
+                result['parameters'] = item['parameters']
+
+            # results 엔드포인트인 경우 결과만 반환
+            if is_results_endpoint and item.get('status') == 'completed':
                 return {
                     'statusCode': 200,
                     'headers': headers,
                     'body': json.dumps({
                         'success': True,
-                        'data': result
+                        'analysis_id': analysis_id,
+                        'analysis_type': detected_type,
+                        'results': result.get('results'),
+                        'summary': result.get('summary'),
+                        'download_urls': result.get('download_urls')
                     }, cls=DecimalEncoder)
                 }
-                
-        except ClientError as e:
-            print(f"DynamoDB 조회 실패 ({table_name}): {str(e)}")
-            continue
-    
-    # 어떤 테이블에서도 찾지 못한 경우
-    return create_error_response(404, "분석을 찾을 수 없습니다", headers)
+
+            return {
+                'statusCode': 200,
+                'headers': headers,
+                'body': json.dumps({
+                    'success': True,
+                    'data': result
+                }, cls=DecimalEncoder)
+            }
+        else:
+            # 분석을 찾을 수 없는 경우
+            return create_error_response(404, "분석을 찾을 수 없습니다", headers)
+
+    except ClientError as e:
+        print(f"DynamoDB 조회 실패: {str(e)}")
+        return create_error_response(500, f"데이터베이스 조회 실패: {str(e)}", headers)
 
 def get_user_analyses(user_id: str, analysis_type: str, headers: Dict[str, str]) -> Dict[str, Any]:
     """사용자별 분석 목록 조회"""
-    
-    all_analyses = []
-    
-    # 검색할 테이블 결정
-    tables_to_check = []
-    if analysis_type == 'eye-tracking' or analysis_type == 'eye-tracking-results':
-        tables_to_check = [(EYE_TRACKING_TABLE, 'eye-tracking')]
-    elif analysis_type == 'finger-tapping':
-        tables_to_check = [(FINGER_TAPPING_TABLE, 'finger-tapping')]
-    else:
-        # 타입이 명시되지 않은 경우 두 테이블 모두 확인
-        tables_to_check = [
-            (EYE_TRACKING_TABLE, 'eye-tracking'),
-            (FINGER_TAPPING_TABLE, 'finger-tapping')
-        ]
-    
-    for table_name, detected_type in tables_to_check:
-        try:
-            table = dynamodb.Table(table_name)
-            
-            # 기본 필터: user_id
-            filter_expression = boto3.dynamodb.conditions.Attr('user_id').eq(user_id)
-            
-            # analysis_type 필터 추가 (해당 타입의 테이블인 경우)
-            if analysis_type:
-                filter_expression = filter_expression & boto3.dynamodb.conditions.Attr('analysis_type').eq(detected_type)
-            
-            response = table.scan(
-                FilterExpression=filter_expression,
-                ProjectionExpression='analysis_id, #status, #timestamp, progress, file_size, analysis_type',
-                ExpressionAttributeNames={'#status': 'status', '#timestamp': 'timestamp'}
-            )
-            
-            items = response.get('Items', [])
-            
-            # 응답 형식 변환
-            for item in items:
-                analysis_info = {
-                    'analysisId': item['analysisId'],
-                    'analysis_type': item.get('analysis_type', detected_type),
-                    'status': item.get('status', 'unknown'),
-                    'timestamp': item.get('timestamp'),
-                    'progress': item.get('progress', 0),
-                    'file_size': item.get('file_size', 0)
-                }
-                all_analyses.append(analysis_info)
-                
-        except ClientError as e:
-            print(f"사용자 분석 목록 조회 실패 ({table_name}): {str(e)}")
-            continue
-    
-    # 타임스탬프로 정렬 (최신순)
-    all_analyses.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
-    
-    return {
-        'statusCode': 200,
-        'headers': headers,
-        'body': json.dumps({
-            'success': True,
-            'user_id': user_id,
-            'analysis_type': analysis_type or 'all',
-            'total_count': len(all_analyses),
-            'analyses': all_analyses
-        }, cls=DecimalEncoder)
-    }
+
+    try:
+        # API 문서 기준: 단일 analyses 테이블에서 user-id-index 사용
+        table = dynamodb.Table(ANALYSES_TABLE)
+
+        # GSI를 사용한 쿼리 (user_id + created_at)
+        query_kwargs = {
+            'IndexName': 'user-id-index',
+            'KeyConditionExpression': boto3.dynamodb.conditions.Key('user_id').eq(user_id),
+            'ProjectionExpression': 'analysis_id, analysis_type, #status, created_at, updated_at, progress',
+            'ExpressionAttributeNames': {'#status': 'status'},
+            'ScanIndexForward': False,  # 최신순 정렬
+            'Limit': MAX_HISTORY_RECORDS
+        }
+
+        # analysis_type 필터 추가
+        if analysis_type:
+            query_kwargs['FilterExpression'] = boto3.dynamodb.conditions.Attr('analysis_type').eq(analysis_type)
+
+        response = table.query(**query_kwargs)
+        items = response.get('Items', [])
+
+        # 응답 형식 변환
+        all_analyses = []
+        for item in items:
+            analysis_info = {
+                'analysis_id': item['analysis_id'],  # API 문서 기준
+                'analysis_type': item.get('analysis_type', 'unknown'),
+                'status': item.get('status', 'unknown'),
+                'created_at': item.get('created_at'),
+                'updated_at': item.get('updated_at'),
+                'progress': item.get('progress', 0)
+            }
+            all_analyses.append(analysis_info)
+
+        return {
+            'statusCode': 200,
+            'headers': headers,
+            'body': json.dumps({
+                'success': True,
+                'user_id': user_id,
+                'analysis_type': analysis_type or 'all',
+                'total_count': len(all_analyses),
+                'analyses': all_analyses
+            }, cls=DecimalEncoder)
+        }
+
+    except ClientError as e:
+        print(f"사용자 분석 목록 조회 실패: {str(e)}")
+        return create_error_response(500, f"분석 목록 조회 실패: {str(e)}", headers)
 
 def create_eye_tracking_summary(result: Dict[str, Any]) -> Dict[str, Any]:
     """Eye Tracking 결과 요약 생성 (클라이언트 분석 결과 포함)"""
@@ -360,17 +345,24 @@ def generate_presigned_url(s3_key: str, content_type: str, expiration: int = 360
 def estimate_completion_time(item: Dict[str, Any]) -> int:
     """예상 완료 시간 계산 (초)"""
     try:
-        timestamp = item.get('timestamp', 0)
-        file_size = item.get('file_size', 0)
+        # API 문서 기준: created_at 사용
+        created_at_str = item.get('created_at', '')
+        if not created_at_str:
+            return 300  # 기본 5분
+
+        # ISO 8601 형식 파싱
+        from datetime import datetime
+        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+        elapsed = (datetime.utcnow() - created_at.replace(tzinfo=None)).total_seconds()
+
         progress = item.get('progress', 0)
-        
+
         if progress <= 0:
             return 300  # 기본 5분
-        
-        elapsed = int(time.time()) - timestamp
+
         estimated_total = elapsed * (100 / progress)
         remaining = max(0, estimated_total - elapsed)
-        
+
         return int(remaining)
     except:
         return 180  # 기본 3분

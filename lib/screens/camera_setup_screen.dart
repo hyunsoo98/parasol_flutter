@@ -425,6 +425,9 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
           );
           return;
 
+          // 이 코드는 더 이상 실행되지 않습니다 (위에서 return되므로)
+          // 기존 서버 분석 방식 제거로 인해 주석 처리됨
+          /*
           // 결과 화면으로 이동
           if (mounted) {
             Navigator.pushReplacement(
@@ -438,6 +441,7 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
             );
           }
           return; // 성공 시 여기서 종료
+          */
         } catch (e) {
           debugPrint('API 분석 실패: $e');
           setState(() {

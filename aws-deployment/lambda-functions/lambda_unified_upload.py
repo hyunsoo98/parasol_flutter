@@ -20,33 +20,42 @@ s3_client = boto3.client('s3')
 sqs_client = boto3.client('sqs')
 dynamodb = boto3.resource('dynamodb')
 
-# 환경 변수
+# 통합 환경 변수 설정 (실제 구조 + Flutter 시선추적 반영)
 S3_BUCKET = os.environ.get('S3_BUCKET', 'seoul-ht-09')
+S3_EYE_TRACKING_PREFIX = os.environ.get('S3_EYE_TRACKING_PREFIX', 'eye-tracking/results')  # JSON 결과만
+S3_FINGER_TAPPING_PREFIX = os.environ.get('S3_FINGER_TAPPING_PREFIX', 'finger-tapping')
+S3_VOICE_ANALYSIS_PREFIX = os.environ.get('S3_VOICE_ANALYSIS_PREFIX', 'voice-analysis')
 
-# 표준화된 S3 경로 설정 (시선추적은 클라이언트 분석으로 제거)
+# SQS 큐 URL (API 문서 기준)
+EYE_TRACKING_QUEUE_URL = os.environ.get('EYE_TRACKING_QUEUE_URL', 'https://sqs.us-west-1.amazonaws.com/327784329358/eye-tracking-queue.fifo')
+FINGER_TAPPING_QUEUE_URL = os.environ.get('FINGER_TAPPING_QUEUE_URL', 'https://sqs.us-west-1.amazonaws.com/327784329358/finger-tapping-queue.fifo')
+VOICE_ANALYSIS_QUEUE_URL = os.environ.get('VOICE_ANALYSIS_QUEUE_URL', 'https://sqs.us-west-1.amazonaws.com/327784329358/voice-analysis-queue.fifo')
+
+# DynamoDB 테이블 (API 문서 기준 - 모든 분석은 analyses 테이블 사용)
+ANALYSES_TABLE = os.environ.get('ANALYSES_TABLE', 'analyses')
+
+# 표준화된 분석 설정 (실제 구조 + Flutter 시선추적 반영)
 ANALYSIS_CONFIGS = {
-    # 'eye-tracking': 클라이언트에서 실시간 분석하므로 AWS 업로드 불필요
+    'eye-tracking': {
+        's3_prefix': f'{S3_EYE_TRACKING_PREFIX}/',  # results 경로에 직접 저장
+        'sqs_queue_url': None,  # SQS 처리 없음 (Flutter 실시간 분석)
+        'dynamodb_table': ANALYSES_TABLE,
+        'content_type': 'application/json',
+        'file_extension': '.json'
+    },
     'finger-tapping': {
-        's3_prefix': 'videos/finger-tapping/',
-        'sqs_queue_url': os.environ.get('FINGER_TAPPING_QUEUE', 'https://sqs.us-west-1.amazonaws.com/730335212232/finger-tapping-processing.fifo'),
-        'dynamodb_table': 'finger-tapping-results',
+        's3_prefix': f'{S3_FINGER_TAPPING_PREFIX}/raw/',
+        'sqs_queue_url': FINGER_TAPPING_QUEUE_URL,
+        'dynamodb_table': ANALYSES_TABLE,
         'content_type': 'video/mp4',
         'file_extension': '.mp4'
     },
     'voice-analysis': {
-        's3_prefix': 'audio/voice-analysis/',
-        'sqs_queue_url': os.environ.get('VOICE_ANALYSIS_QUEUE', 'https://sqs.us-west-1.amazonaws.com/730335212232/voice-analysis-processing.fifo'),
-        'dynamodb_table': 'voice-analysis-results',
+        's3_prefix': f'{S3_VOICE_ANALYSIS_PREFIX}/raw/',
+        'sqs_queue_url': VOICE_ANALYSIS_QUEUE_URL,
+        'dynamodb_table': ANALYSES_TABLE,
         'content_type': 'audio/wav',
         'file_extension': '.wav'
-    },
-    # 시선추적 결과 저장용 (비디오 없이 분석 결과만 저장)
-    'eye-tracking-results': {
-        's3_prefix': 'results/eye-tracking/',
-        'sqs_queue_url': None,  # SQS 처리 불필요
-        'dynamodb_table': 'eye-tracking-results',
-        'content_type': 'application/json',
-        'file_extension': '.json'
     }
 }
 
@@ -104,15 +113,17 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         else:
             body = event.get('body', {})
 
-        # 필수 필드 검증 (시선추적 결과는 video_data 대신 results_data 사용)
+        # 필수 필드 검증 (Flutter 시선추적 반영)
         analysis_type = body.get('analysis_type')
 
-        if analysis_type == 'eye-tracking-results':
+        if analysis_type == 'eye-tracking':
+            # 시선추적은 JSON 결과 데이터
             required_fields = ['analysis_type', 'results_data', 'user_id']
             data_field = 'results_data'
         else:
-            required_fields = ['analysis_type', 'video_data', 'user_id']
-            data_field = 'video_data'
+            # 기타 분석은 파일 데이터
+            required_fields = ['analysis_type', 'file_data', 'user_id']
+            data_field = 'file_data'
 
         for field in required_fields:
             if field not in body:
@@ -147,19 +158,19 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         analysis_id = str(uuid.uuid4())
         timestamp = int(time.time())
 
-        # S3 키 생성
-        s3_key = f"{config['s3_prefix']}{user_id}/{analysis_id}_{timestamp}{config['file_extension']}"
+        # S3 키 생성 (API 문서 기준: {prefix}/raw/{analysis_id}/{filename})
+        s3_key = f"{config['s3_prefix']}{analysis_id}/input{config['file_extension']}"
 
         try:
-            # 데이터 처리 (시선추적 결과는 JSON, 나머지는 Base64 디코딩)
-            if analysis_type == 'eye-tracking-results':
+            # 데이터 처리 (시선추적 vs 파일 데이터)
+            if analysis_type == 'eye-tracking':
                 # JSON 데이터를 문자열로 변환
                 if isinstance(file_data, dict):
-                    file_bytes = json.dumps(file_data).encode('utf-8')
+                    file_bytes = json.dumps(file_data, ensure_ascii=False).encode('utf-8')
                 else:
                     file_bytes = str(file_data).encode('utf-8')
             else:
-                # Base64 데이터 디코딩 (비디오 또는 오디오)
+                # Base64 데이터 디코딩 (비디오/오디오)
                 file_bytes = base64.b64decode(file_data)
         except Exception as e:
             return {
@@ -211,14 +222,16 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 safe_parameters = processed_parameters
 
                 table.put_item(Item={
-                    'analysisId': analysis_id,
+                    'analysis_id': analysis_id,  # API 문서 기준 필드명
                     'user_id': user_id,
-                    'status': 'uploaded',
-                    'timestamp': timestamp,
-                    's3_key': s3_key,
                     'analysis_type': analysis_type,
-                    'parameters': safe_parameters,
-                    'created_at': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp))
+                    'status': 'uploaded',
+                    'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(timestamp)),
+                    'updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(timestamp)),
+                    's3_paths': {
+                        'raw': s3_key
+                    },
+                    'parameters': safe_parameters
                 })
             except Exception as e:
                 # DynamoDB 저장 실패시 S3에서 업로드된 파일 삭제 (롤백)
@@ -262,12 +275,13 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 try:
                     table = dynamodb.Table(config['dynamodb_table'])
                     table.update_item(
-                        Key={'analysisId': analysis_id},
-                        UpdateExpression='SET #status = :status, error_message = :error',
+                        Key={'analysis_id': analysis_id},  # API 문서 기준 필드명
+                        UpdateExpression='SET #status = :status, error_message = :error, updated_at = :updated_at',
                         ExpressionAttributeNames={'#status': 'status'},
                         ExpressionAttributeValues={
                             ':status': 'failed',
-                            ':error': f'SQS send failed: {str(e)}'
+                            ':error': f'SQS send failed: {str(e)}',
+                            ':updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
                         }
                     )
                 except:
@@ -288,10 +302,13 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 try:
                     table = dynamodb.Table(config['dynamodb_table'])
                     table.update_item(
-                        Key={'analysisId': analysis_id},
-                        UpdateExpression='SET #status = :status',
+                        Key={'analysis_id': analysis_id},  # API 문서 기준 필드명
+                        UpdateExpression='SET #status = :status, updated_at = :updated_at',
                         ExpressionAttributeNames={'#status': 'status'},
-                        ExpressionAttributeValues={':status': 'completed'}
+                        ExpressionAttributeValues={
+                            ':status': 'completed',
+                            ':updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+                        }
                     )
                 except Exception as e:
                     print(f"DynamoDB 상태 업데이트 실패: {e}")
@@ -302,11 +319,13 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             'headers': headers,
             'body': json.dumps({
                 'message': 'Upload successful',
-                'analysisId': analysis_id,
+                'analysis_id': analysis_id,  # API 문서 기준 필드명
                 'analysis_type': analysis_type,
                 'status': 'uploaded',
-                's3_key': s3_key,
-                'timestamp': timestamp,
+                's3_paths': {
+                    'raw': s3_key
+                },
+                'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(timestamp)),
                 'estimated_processing_time': get_estimated_time(analysis_type)
             })
         }
@@ -324,7 +343,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
 def get_estimated_time(analysis_type: str) -> str:
     """분석 타입별 예상 처리 시간 반환"""
     times = {
-        'eye-tracking-results': 'completed',  # 클라이언트에서 이미 분석됨
+        'eye-tracking': '2-4 minutes',
         'finger-tapping': '1-3 minutes',
         'voice-analysis': '1-2 minutes'
     }
