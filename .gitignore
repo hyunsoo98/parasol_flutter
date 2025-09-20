@@ -95,4 +95,4 @@ test_videos/
 *.model
 *.pb
 *.tflite
-models/
+ml_models/
