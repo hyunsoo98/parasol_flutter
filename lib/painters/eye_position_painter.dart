@@ -47,4 +47,5 @@ class EyePositionPainter extends CustomPainter {
         confidence != oldDelegate.confidence ||
         faceDetected != oldDelegate.faceDetected;
   }
+
 }

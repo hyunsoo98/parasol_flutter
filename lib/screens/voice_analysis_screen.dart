@@ -7,16 +7,19 @@ import 'package:path_provider/path_provider.dart';
 import 'package:circular_countdown_timer/circular_countdown_timer.dart';
 import '../services/permission_service.dart';
 import '../services/api_service.dart';
+import '../services/test_flow_service.dart';
 import 'final_diagnosis_screen.dart';
 
 class VoiceAnalysisScreen extends StatefulWidget {
   final Map<String, dynamic>? fingerTappingResult;
   final bool isStandaloneTest; // 개별 검사 모드인지 여부
-  
+  final TestFlowService? testFlowService;
+
   const VoiceAnalysisScreen({
     Key? key,
     this.fingerTappingResult,
     this.isStandaloneTest = false,
+    this.testFlowService,
   }) : super(key: key);
 
   @override
@@ -491,7 +494,7 @@ class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerPr
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _proceedToEyeTracking,
+              onPressed: _proceedToFinalResults,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.purple,
                 foregroundColor: Colors.white,
@@ -501,7 +504,7 @@ class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerPr
                 ),
               ),
               child: const Text(
-                '시선 추적 검사로 이동',
+                '최종 결과 확인',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
@@ -775,27 +778,18 @@ class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerPr
     }
   }
 
-  void _proceedToEyeTracking() {
-    // 음성 분석 결과 확인
-    final diseaseScores = _diseaseScores ?? {};
-    final hcScore = diseaseScores['HC'] ?? 0.0;
-    
-    // 개별 검사 모드이거나 HC(정상) 점수가 높으면 바로 결과 화면으로
-    if (widget.isStandaloneTest || hcScore > 0.6) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => FinalDiagnosisScreen(
-            fingerTappingResult: widget.fingerTappingResult,
-            voiceAnalysisResult: _analysisResult,
-            eyeTrackingResult: null,
-          ),
+  void _proceedToFinalResults() {
+    // 분석 결과에 관계없이 항상 최종 결과 화면으로 이동
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FinalDiagnosisScreen(
+          fingerTappingResult: widget.fingerTappingResult,
+          voiceAnalysisResult: _analysisResult,
+          eyeTrackingResult: null, // 시선추적은 건너뛰거나 이미 완료된 상태
         ),
-      );
-    } else {
-      // PSP 의심되면 시선 추적으로 계속 진행
-      _showNextStepDialog();
-    }
+      ),
+    );
   }
   
   void _showNextStepDialog() {

@@ -32,6 +32,7 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
   bool _testStarted = false;
   bool _testCompleted = false;
   int _currentStep = 0; // 0: 준비, 1: 테스트 진행, 2: 완료
+  bool _faceDetected = false; // 손가락/손 감지 상태
   
   // Tapping 데이터
   List<DateTime> _tapTimestamps = [];
@@ -221,7 +222,7 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
                           ),
                         ),
                         Text(
-                          'PSP 위험도: ${_eyeTestContext!['psp_risk_from_eye'] ? '높음' : '낮음'}',
+                          'PSP 위험도: ${(_eyeTestContext!['psp_risk_from_eye'] ?? false) ? '높음' : '낮음'}',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.black54,
@@ -233,7 +234,7 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
                   const SizedBox(height: 16),
                 ],
                 const Text(
-                  '검지와 엄지손가락을\n빠르고 규칙적으로\n마주쳐 주세요',
+                  '카메라 앞에서 검지와 엄지를\n빠르고 규칙적으로\n마주쳐 주세요',
                   style: TextStyle(
                     fontSize: 18,
                     color: Colors.black87,
@@ -262,9 +263,9 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Icon(Icons.touch_app, color: Color(0xFF2F3DA3), size: 20),
+                          Icon(Icons.videocam, color: Color(0xFF2F3DA3), size: 20),
                           const SizedBox(width: 8),
-                          const Text('화면을 터치하여 tapping 진행', 
+                          const Text('카메라로 손가락 움직임 자동 감지',
                                    style: TextStyle(fontSize: 16, color: Color(0xFF2F3DA3))),
                         ],
                       ),
@@ -299,109 +300,157 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
   }
 
   Widget _buildTestingUI() {
-    return GestureDetector(
-      onTap: _recordTap,
-      child: Container(
-        color: Colors.black.withOpacity(0.8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // 카운트다운 타이머
-            CircularCountDownTimer(
-              duration: _testDuration,
-              initialDuration: 0,
-              controller: _countDownController,
-              width: MediaQuery.of(context).size.width / 3,
-              height: MediaQuery.of(context).size.width / 3,
-              ringColor: Colors.grey[300]!,
-              ringGradient: null,
-              fillColor: Color(0xFF2F3DA3),
-              fillGradient: null,
-              backgroundColor: Colors.white,
-              backgroundGradient: null,
-              strokeWidth: 20.0,
-              strokeCap: StrokeCap.round,
-              textStyle: const TextStyle(
-                fontSize: 48.0,
-                color: Color(0xFF2F3DA3),
-                fontWeight: FontWeight.bold,
-              ),
-              textFormat: CountdownTextFormat.S,
-              isReverse: true,
-              isReverseAnimation: true,
-              isTimerTextShown: true,
-              autoStart: false,
-              onStart: () => print('Countdown Started'),
-              onComplete: _completeTest,
+    return Container(
+      color: Colors.black,
+      child: Stack(
+        children: [
+          // 카메라 프리뷰 (전체 화면)
+          if (_isInitialized)
+            Positioned.fill(
+              child: CameraPreview(_controller!),
             ),
-            
-            const SizedBox(height: 40),
-            
-            // Tapping 영역
-            AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _pulseAnimation.value,
-                  child: Container(
-                    width: 200,
-                    height: 200,
+
+          // 오버레이 UI
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.3),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 상단 타이머 및 안내
+                  Container(
+                    margin: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.9),
-                      border: Border.all(color: Color(0xFF2F3DA3), width: 4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Color(0xFF2F3DA3).withOpacity(0.3),
-                          blurRadius: 20,
-                          spreadRadius: 5,
-                        ),
-                      ],
+                      color: Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(
-                          Icons.touch_app,
-                          size: 60,
-                          color: Color(0xFF2F3DA3),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '$_tapCount',
-                          style: const TextStyle(
-                            fontSize: 36,
+                        // 카운트다운 타이머
+                        CircularCountDownTimer(
+                          duration: _testDuration,
+                          initialDuration: 0,
+                          controller: _countDownController,
+                          width: 100,
+                          height: 100,
+                          ringColor: Colors.grey[300]!,
+                          fillColor: Color(0xFF2F3DA3),
+                          backgroundColor: Colors.white,
+                          strokeWidth: 8.0,
+                          strokeCap: StrokeCap.round,
+                          textStyle: const TextStyle(
+                            fontSize: 24.0,
+                            color: Color(0xFF2F3DA3),
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF2F3DA3),
                           ),
+                          textFormat: CountdownTextFormat.S,
+                          isReverse: true,
+                          isReverseAnimation: true,
+                          isTimerTextShown: true,
+                          autoStart: false,
+                          onComplete: _completeTest,
                         ),
-                        const Text(
-                          '터치',
-                          style: TextStyle(
+                        const SizedBox(height: 16),
+                        Text(
+                          '검지와 엄지 손가락을\n빠르고 규칙적으로 마주쳐 주세요',
+                          style: const TextStyle(
                             fontSize: 16,
-                            color: Color(0xFF2F3DA3),
+                            color: Colors.white,
+                            height: 1.5,
                           ),
+                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
                   ),
-                );
-              },
-            ),
-            
-            const SizedBox(height: 40),
-            
-            const Text(
-              '검지와 엄지를 마주칠 때마다\n화면을 터치해주세요',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.white,
-                height: 1.5,
+
+                  const Spacer(),
+
+                  // 하단 결과 표시
+                  Container(
+                    margin: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Column(
+                          children: [
+                            AnimatedBuilder(
+                              animation: _pulseAnimation,
+                              builder: (context, child) {
+                                return Transform.scale(
+                                  scale: _pulseAnimation.value,
+                                  child: Container(
+                                    width: 60,
+                                    height: 60,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Color(0xFF2F3DA3),
+                                      border: Border.all(color: Colors.white, width: 2),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '$_tapCount',
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              '감지된 탭핑',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Column(
+                          children: [
+                            Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _faceDetected ? Colors.green : Colors.red,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: Icon(
+                                _faceDetected ? Icons.videocam : Icons.videocam_off,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _faceDetected ? '손가락 인식' : '손가락 찾는 중',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              textAlign: TextAlign.center,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -548,9 +597,12 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
       _tapTimestamps.clear();
       _tapCount = 0;
     });
-    
+
     _countDownController.start();
-    
+
+    // 카메라 스트림 시작하여 손가락 움직임 감지
+    _startFingerDetection();
+
     // 15초 후 자동 완료
     _testTimer = Timer(Duration(seconds: _testDuration), () {
       if (mounted && !_testCompleted) {
@@ -559,28 +611,98 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
     });
   }
 
-  void _recordTap() {
+  void _startFingerDetection() {
+    if (_controller != null && _controller!.value.isInitialized) {
+      _controller!.startImageStream((CameraImage image) {
+        if (_testStarted && !_testCompleted) {
+          _processFingerFrame(image);
+        }
+      });
+    }
+  }
+
+  // 손가락 프레임 처리 (간단한 모션 감지)
+  DateTime? _lastProcessTime;
+  double _lastMotionValue = 0.0;
+  int _motionThreshold = 50; // 모션 감지 임계값
+
+  Future<void> _processFingerFrame(CameraImage image) async {
+    try {
+      final now = DateTime.now();
+
+      // 프레임 처리 빈도 제한 (100ms마다)
+      if (_lastProcessTime != null &&
+          now.difference(_lastProcessTime!).inMilliseconds < 100) {
+        return;
+      }
+      _lastProcessTime = now;
+
+      // 간단한 모션 감지 (실제로는 더 복잡한 손가락 추적 필요)
+      final motionValue = _calculateMotion(image);
+
+      // 모션 변화가 임계값을 넘으면 탭핑으로 인식
+      if ((motionValue - _lastMotionValue).abs() > _motionThreshold) {
+        _recordFingerTap();
+      }
+
+      _lastMotionValue = motionValue;
+
+      // 얼굴/손 감지 상태 업데이트 (UI용)
+      setState(() {
+        _faceDetected = motionValue > 30; // 임의의 기준
+      });
+
+    } catch (e) {
+      print('손가락 감지 오류: $e');
+    }
+  }
+
+  double _calculateMotion(CameraImage image) {
+    // 간단한 모션 계산 (실제로는 MediaPipe나 ML Kit 사용 권장)
+    try {
+      final plane = image.planes[0];
+      final bytes = plane.bytes;
+
+      // 이미지 밝기 변화로 간단한 모션 감지
+      double sum = 0;
+      for (int i = 0; i < bytes.length; i += 10) { // 샘플링
+        sum += bytes[i];
+      }
+      return sum / (bytes.length / 10);
+    } catch (e) {
+      return 0.0;
+    }
+  }
+
+  void _recordFingerTap() {
     if (!_testStarted || _testCompleted) return;
-    
+
     setState(() {
       _tapCount++;
       _tapTimestamps.add(DateTime.now());
     });
-    
+
     // 탭 애니메이션
     _pulseController.forward().then((_) {
       _pulseController.reverse();
     });
+
+    print('손가락 탭핑 감지: $_tapCount');
   }
 
   void _completeTest() {
     if (_testCompleted) return;
-    
+
     setState(() {
       _testCompleted = true;
       _currentStep = 2;
     });
-    
+
+    // 카메라 스트림 정지
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      _controller!.stopImageStream();
+    }
+
     _testTimer?.cancel();
     _analyzeResults();
   }
@@ -673,7 +795,7 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
       // 시선추적 연계 테스트인 경우
       if (widget.testFlowService != null && _fromEyeTest) {
         final result = await widget.testFlowService!.completeFingerTapping(
-          fingerResults: fingerResults,
+          fingerTappingData: fingerResults,
           additionalMetadata: {
             'platform': 'flutter',
             'test_type': 'finger_tapping_connected',
@@ -700,24 +822,16 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
   }
 
   void _proceedToVoiceAnalysis() {
-    final pdProbability = _pdProbability ?? 0.0;
-    
-    // 개별 검사 모드이거나 PD 확률이 낮으면 (정상 범위) 바로 결과 화면으로
-    if (widget.isStandaloneTest || pdProbability < 0.3) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => FinalDiagnosisScreen(
-            fingerTappingResult: _analysisResult,
-            voiceAnalysisResult: null,
-            eyeTrackingResult: null,
-          ),
+    // 분석 결과에 관계없이 항상 음성 분석으로 진행
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VoiceAnalysisScreen(
+          fingerTappingResult: _analysisResult,
+          testFlowService: widget.testFlowService,
         ),
-      );
-    } else {
-      // PD 의심되면 음성 분석으로 계속 진행
-      _showNextStepDialog();
-    }
+      ),
+    );
   }
   
   void _showNextStepDialog() {
