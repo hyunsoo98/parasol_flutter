@@ -168,15 +168,18 @@ class AwsConfig {
   static bool get isDevelopment => kDebugMode;
   static bool get isProduction => !kDebugMode;
 
-  // API Key (필요시 설정)
-  static const String? apiKey = null; // API Key가 필요하면 여기에 추가
+  // API Key (아키텍처 문서 기반 - CORS에서 X-Api-Key 허용됨)
+  static const String? apiKey = String.fromEnvironment('API_KEY', defaultValue: '');
 
-  // HTTP 헤더 설정
+  // HTTP 헤더 설정 (아키텍처 문서 CORS 설정 기반)
   static Map<String, String> get defaultHeaders => {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     'User-Agent': 'Flutter-App/1.0',
-    if (apiKey != null) 'x-api-key': apiKey!,
+    // 아키텍처 문서: CORS에서 X-Api-Key 헤더 허용됨
+    if (apiKey != null && apiKey!.isNotEmpty) 'X-Api-Key': apiKey!,
+    // 기본적으로 Authorization 헤더도 포함 (필요시)
+    'X-Amz-Date': DateTime.now().toUtc().toIso8601String(),
   };
 
   // Amplify Configuration (호환성 유지)

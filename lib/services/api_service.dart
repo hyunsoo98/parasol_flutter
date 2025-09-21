@@ -34,6 +34,29 @@ class ApiService {
     }
   }
 
+  // OPTIONS 요청 메서드 (CORS 프리플라이트)
+  Future<Map<String, dynamic>> options(String path) async {
+    try {
+      final uri = Uri.parse('${AwsConfig.apiGatewayBaseUrl}$path');
+
+      final request = http.Request('OPTIONS', uri);
+      request.headers.addAll(AwsConfig.defaultHeaders);
+
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 10));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {'success': true, 'cors_enabled': true};
+      } else {
+        print('⚠️ OPTIONS 요청 실패: ${response.statusCode}');
+        return {'error': 'options_failed', 'status_code': response.statusCode};
+      }
+    } catch (e) {
+      print('⚠️ OPTIONS 요청 오류: $e');
+      return {'error': 'options_error', 'message': e.toString()};
+    }
+  }
+
   Future<Map<String, dynamic>> post(String path, {Map<String, dynamic>? data}) async {
     try {
       final uri = Uri.parse('${AwsConfig.apiGatewayBaseUrl}$path');
@@ -68,7 +91,15 @@ class ApiService {
   // --- Health Check ---
   Future<bool> healthCheck() async {
     try {
+      // 1. 먼저 OPTIONS 요청으로 CORS 확인
+      final optionsResult = await options('/api/v1/health');
+      if (optionsResult['success'] == true) {
+        print('✅ CORS 프리플라이트 성공');
+      }
+
+      // 2. 실제 GET 요청
       final result = await get('/api/v1/health');
+
       // 403 오류도 서버가 살아있다는 의미이므로 true 반환
       if (result['local_mode'] == true && result['error'] == 'auth_required') {
         print('💡 서버는 정상이지만 인증이 필요한 상태입니다.');
@@ -76,7 +107,13 @@ class ApiService {
       }
       return result['error'] == null;
     } catch (_) {
-      return false;
+      // 3. 모든 요청이 실패하면 OPTIONS만 시도
+      try {
+        final optionsResult = await options('/api/v1/health');
+        return optionsResult['error'] == null;
+      } catch (_) {
+        return false;
+      }
     }
   }
 
