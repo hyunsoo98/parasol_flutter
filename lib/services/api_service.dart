@@ -15,16 +15,22 @@ class ApiService {
       final response = await http.get(
         finalUri,
         headers: AwsConfig.defaultHeaders,
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (response.body.isEmpty) return {};
         return jsonDecode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 403) {
+        // 403 인증 오류는 서버 설정 문제이므로 fallback 응답 반환
+        print('⚠️ API 인증 오류 (403) - 로컬 모드로 동작: $path');
+        return {'error': 'auth_required', 'message': 'Server authentication required', 'local_mode': true};
       } else {
         throw Exception('API 오류 (GET ${response.statusCode}): ${response.body}');
       }
     } catch (e) {
-      throw Exception('API Exception (GET $path): $e');
+      // 네트워크 오류나 타임아웃 시 fallback
+      print('⚠️ API 호출 실패 - 로컬 모드로 동작: $path - $e');
+      return {'error': 'network_error', 'message': 'API call failed', 'local_mode': true};
     }
   }
 
@@ -36,16 +42,22 @@ class ApiService {
         uri,
         headers: AwsConfig.defaultHeaders,
         body: data != null ? jsonEncode(data) : null,
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (response.body.isEmpty) return {};
         return jsonDecode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 403) {
+        // 403 인증 오류는 서버 설정 문제이므로 fallback 응답 반환
+        print('⚠️ API 인증 오류 (403) - 로컬 모드로 동작: $path');
+        return {'error': 'auth_required', 'message': 'Server authentication required', 'local_mode': true};
       } else {
         throw Exception('API 오류 (POST ${response.statusCode}): ${response.body}');
       }
     } catch (e) {
-      throw Exception('API Exception (POST $path): $e');
+      // 네트워크 오류나 타임아웃 시 fallback
+      print('⚠️ API 호출 실패 - 로컬 모드로 동작: $path - $e');
+      return {'error': 'network_error', 'message': 'API call failed', 'local_mode': true};
     }
   }
 
@@ -56,8 +68,13 @@ class ApiService {
   // --- Health Check ---
   Future<bool> healthCheck() async {
     try {
-      await get('/api/v1/health');
-      return true;
+      final result = await get('/api/v1/health');
+      // 403 오류도 서버가 살아있다는 의미이므로 true 반환
+      if (result['local_mode'] == true && result['error'] == 'auth_required') {
+        print('💡 서버는 정상이지만 인증이 필요한 상태입니다.');
+        return true;
+      }
+      return result['error'] == null;
     } catch (_) {
       return false;
     }

@@ -175,6 +175,7 @@ class AwsConfig {
   static Map<String, String> get defaultHeaders => {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
+    'User-Agent': 'Flutter-App/1.0',
     if (apiKey != null) 'x-api-key': apiKey!,
   };
 
