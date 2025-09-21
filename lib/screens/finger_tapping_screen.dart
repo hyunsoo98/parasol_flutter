@@ -673,7 +673,7 @@ class _FingerTappingScreenState extends State<FingerTappingScreen> with TickerPr
       // 시선추적 연계 테스트인 경우
       if (widget.testFlowService != null && _fromEyeTest) {
         final result = await widget.testFlowService!.completeFingerTapping(
-          fingerResults: fingerResults,
+          fingerTappingData: fingerResults,
           additionalMetadata: {
             'platform': 'flutter',
             'test_type': 'finger_tapping_connected',

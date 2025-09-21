@@ -14,6 +14,7 @@ import '../services/test_flow_service.dart';
 import '../services/api_service.dart';
 import '../services/aws_integration_service.dart';
 import 'finger_tapping_screen.dart';
+import 'analysis_status_screen.dart';
 import '../painters/eye_position_painter.dart';
 
 /// 구조화된 시선추적 테스트 화면 - TTS 가이드와 실시간 ML Kit 분석
@@ -813,43 +814,62 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
 
     if (!mounted) return; // TTS 전에 다시 확인
 
-    await _speak('시선추적 검사가 완료되었습니다. 결과를 분석 중입니다.');
+    await _speak('시선추적 검사가 완료되었습니다. 영상을 저장하고 분석을 요청 중입니다.');
 
     final testDuration = DateTime.now().difference(_testStartTime!).inMilliseconds / 1000.0;
 
     try {
-      print('시선추적 분석 시작 - 프레임 수: ${_frameAnalyses.length}, 테스트 시간: ${testDuration}초');
+      print('시선추적 영상 저장 및 분석 요청 - 프레임 수: ${_frameAnalyses.length}, 테스트 시간: ${testDuration}초');
 
-      // 서버로 결과 전송
+      // 영상 기반 분석으로 변경
       final result = await _testFlowService.completeEyeTest(
-        frameAnalyses: _frameAnalyses,
+        videoPath: _videoPath ?? '',
+        basicMetrics: _frameAnalyses,
         testDuration: testDuration,
         totalFrames: _frameAnalyses.length,
-        processingFps: _frameAnalyses.length / testDuration,
+        recordingFps: _frameAnalyses.length / testDuration,
         additionalMetadata: {
           'total_sets': _totalSets,
           'platform': 'flutter',
           'tts_guided': true,
+          'analysis_type': 'video_based',
         },
       ).timeout(const Duration(seconds: 30)); // 30초 타임아웃 추가
 
-      print('시선추적 분석 결과: $result');
+      print('시선추적 영상 제출 결과: $result');
 
       if (!mounted) return; // 네비게이션 전에 확인
 
       if (result['success'] == true) {
-        if (mounted) await _speak('분석이 완료되었습니다. 다음 검사로 이동하겠습니다.');
-        _proceedToFingerTapping();
+        if (mounted) await _speak('영상이 성공적으로 제출되었습니다. 분석 상태를 확인할 수 있습니다.');
+        _proceedToAnalysisStatus();
       } else {
-        print('시선추적 분석 실패: ${result['error'] ?? 'Unknown error'}');
-        if (mounted) await _speak('분석 중 오류가 발생했습니다. 다음 검사로 이동하겠습니다.');
+        print('시선추적 영상 제출 실패: ${result['error'] ?? 'Unknown error'}');
+        if (mounted) await _speak('영상 제출 중 오류가 발생했습니다. 다음 검사로 이동하겠습니다.');
         _proceedToFingerTapping(); // 오류가 있어도 다음 단계로 진행
       }
     } catch (e) {
-      print('시선추적 분석 예외 발생: $e');
-      if (mounted) await _speak('분석 처리 중 문제가 발생했습니다. 다음 검사로 이동하겠습니다.');
+      print('시선추적 영상 제출 예외 발생: $e');
+      if (mounted) await _speak('영상 제출 중 문제가 발생했습니다. 다음 검사로 이동하겠습니다.');
       _proceedToFingerTapping(); // 예외가 발생해도 다음 단계로 진행
     }
+  }
+
+  void _proceedToAnalysisStatus() {
+    // Widget이 여전히 마운트되어 있는지 확인
+    if (!mounted) {
+      print('Widget이 이미 unmount되었습니다. 네비게이션을 건너뜁니다.');
+      return;
+    }
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => AnalysisStatusScreen(
+          sessionId: _testFlowService.currentSessionId ?? '',
+          userId: widget.userId,
+        ),
+      ),
+    );
   }
 
   void _proceedToFingerTapping() {
