@@ -44,8 +44,11 @@ dependencies:
   # 컴퓨터 비전 - ML Kit 최적화
   google_mlkit_face_detection: ^0.11.0
   
-  # 오디오 녹음 및 재생 (web 빌드에서 문제가 있으므로 플랫폼별 조건부 import 사용)
-  flutter_sound: ^9.2.13
+  # 오디오 녹음 및 재생 (웹 호환성 문제로 주석 처리)
+  # flutter_sound: ^9.2.13
+
+  # 웹 호환 오디오 대안
+  record: ^5.0.4
   path_provider: ^2.1.2
   
   # 타이머 및 애니메이션

@@ -4,9 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-
-// 플랫폼별 조건부 import
-import 'package:flutter_sound/flutter_sound.dart' if (dart.library.html) '../flutter_sound_web_stub.dart';
+import 'package:record/record.dart';
 import 'package:circular_countdown_timer/circular_countdown_timer.dart';
 import '../services/permission_service.dart';
 import '../services/api_service.dart';
@@ -30,8 +28,8 @@ class VoiceAnalysisScreen extends StatefulWidget {
 }
 
 class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerProviderStateMixin {
-  dynamic _recorder; // FlutterSoundRecorder for mobile, null for web
-  dynamic _player;   // FlutterSoundPlayer for mobile, null for web
+  late AudioRecorder _recorder;
+  bool _isRecorderInitialized = false;
   
   // 녹음 상태
   bool _isRecording = false;
@@ -66,17 +64,15 @@ class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerPr
   }
 
   Future<void> _initializeRecorder() async {
-    if (!kIsWeb) {
-      try {
-        _recorder = FlutterSoundRecorder();
-        _player = FlutterSoundPlayer();
-
-        await _recorder!.openRecorder();
-        await _player!.openPlayer();
-      } catch (e) {
-        print('Failed to initialize recorder: $e');
-        // 웹이나 초기화 실패 시 null로 유지
+    try {
+      _recorder = AudioRecorder();
+      _isRecorderInitialized = await _recorder.hasPermission();
+      if (!_isRecorderInitialized) {
+        _isRecorderInitialized = await _recorder.hasPermission();
       }
+    } catch (e) {
+      print('Failed to initialize recorder: $e');
+      _isRecorderInitialized = false;
     }
   }
 
@@ -622,20 +618,29 @@ class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerPr
 
   Future<void> _startRecording() async {
     try {
-      if (kIsWeb || _recorder == null) {
-        // 웹에서는 시뮬레이션 모드로 진행
-        _startWebSimulation();
+      if (!_isRecorderInitialized) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('녹음 권한이 필요합니다')),
+        );
         return;
       }
 
-      final directory = await getTemporaryDirectory();
-      final filePath = '${directory.path}/voice_recording_${DateTime.now().millisecondsSinceEpoch}.aac';
+      String filePath;
+      if (kIsWeb) {
+        // 웹에서는 브라우저가 자동으로 처리
+        filePath = 'voice_recording_${DateTime.now().millisecondsSinceEpoch}';
+      } else {
+        final directory = await getTemporaryDirectory();
+        filePath = '${directory.path}/voice_recording_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      }
 
-      await _recorder!.startRecorder(
-        toFile: filePath,
-        codec: Codec.aacADTS,
-        bitRate: 128000,
-        sampleRate: 44100,
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 128000,
+          sampleRate: 44100,
+        ),
+        path: kIsWeb ? filePath : filePath,  // 웹과 모바일 모두 path 제공
       );
 
       setState(() {
@@ -659,24 +664,6 @@ class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerPr
         SnackBar(content: Text('녹음 시작 실패: $e')),
       );
     }
-  }
-
-  void _startWebSimulation() {
-    setState(() {
-      _currentStep = 1;
-      _isRecording = true;
-      _recordedFilePath = 'web_simulation_recording';
-      _audioLevels.clear();
-    });
-
-    _countDownController.start();
-    _waveController.repeat();
-    _startLevelMonitoring();
-
-    // 15초 후 자동 중지
-    _recordingTimer = Timer(Duration(seconds: _recordingDuration), () {
-      _stopRecording();
-    });
   }
 
   void _startLevelMonitoring() {
@@ -705,8 +692,9 @@ class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerPr
     _waveController.stop();
 
     try {
-      if (!kIsWeb && _recorder != null) {
-        await _recorder!.stopRecorder();
+      final path = await _recorder.stop();
+      if (path != null) {
+        _recordedFilePath = path;
       }
 
       setState(() {
@@ -906,10 +894,7 @@ class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerPr
   void dispose() {
     _recordingTimer?.cancel();
     _levelTimer?.cancel();
-    if (!kIsWeb) {
-      _recorder?.closeRecorder();
-      _player?.closePlayer();
-    }
+    _recorder.dispose();
     _waveController.dispose();
     super.dispose();
   }
