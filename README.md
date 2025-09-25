@@ -140,7 +140,7 @@
 
 ## ☁️AWS Cloud Architecture
 <p align="center">
-  <img width="700" height="862" alt="architecture-diagram" src="https://github.com/user-attachments/assets/cb17e6c7-6a5b-4731-bf0e-38564dcc1af6" />
+  <img width="700" height="862" alt="architecture-diagram" src="https://github.com/user-attachments/assets/images/image (13).png" />
 </p>
 
 > App에서 제공하는 모든 핵심 기능은 **AWS cloud platform** 을 사용했습니다.  
