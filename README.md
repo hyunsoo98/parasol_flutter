@@ -71,7 +71,6 @@
   <tr>
     <th align="left">클라우드 / DB</th>
     <td>
-      <img src="https://img.shields.io/badge/Firebase_Admin-6.5.0-FFCA28?logo=firebase"/>
       <img src="https://img.shields.io/badge/boto3-%3E%3D1.34.0-232F3E?logo=awslambda&logoColor=white"/>
       <img src="https://img.shields.io/badge/botocore-%3E%3D1.34.0-232F3E?logo=amazonaws&logoColor=white"/>
       <img src="https://img.shields.io/badge/Requests-%3E%3D2.31.0-4A4A4A"/>
