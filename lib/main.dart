@@ -1,36 +1,29 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// import 'package:firebase_core/firebase_core.dart'; - 제거됨
 import 'providers/auth_provider.dart' as local_auth;
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/phone_auth_screen.dart';
 import 'config/aws_config.dart';
-import 'services/parasol_auth_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize Firebase - 제거됨
-  // await Firebase.initializeApp();
-  
-  // Initialize AWS configuration
+
+  // 앱 초기화
   await _initializeApp();
-  
+
   runApp(const MyApp());
 }
 
 Future<void> _initializeApp() async {
   try {
-    // Initialize AWS configuration
+    // AWS 설정 초기화
     AwsConfig.initialize();
-    print('Successfully initialized AWS configuration 🎉');
-
-    // ParasolAuth는 CustomAuthProvider에서 초기화됨
+    print('✅ 앱 초기화 완료');
   } catch (e) {
-    print('An error occurred initializing app: $e');
+    print('⚠️ 초기화 오류: $e');
+    print('📱 오프라인 모드로 실행됩니다');
   }
 }
 

@@ -189,32 +189,7 @@ class _PhoneMountGuideScreenState extends State<PhoneMountGuideScreen>
               ),
             ),
           ),
-          TextButton(
-            onPressed: () {
-              // 건너뛰기도 시선추적으로 직접 이동
-              final testFlowService = TestFlowService(apiService: ApiService());
-              final userId = 'guest_${DateTime.now().millisecondsSinceEpoch}';
-              testFlowService.startNewTestSession(userId);
-
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => StructuredEyeTestScreen(
-                    userId: userId,
-                    testFlowService: testFlowService,
-                  ),
-                ),
-              );
-            },
-            child: const Text(
-              '건너뛰기',
-              style: TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w500,
-                fontSize: 18,
-              ),
-            ),
-          ),
+          const SizedBox(width: 48),
         ],
       ),
     );
@@ -472,10 +447,17 @@ class _PhoneMountGuideScreenState extends State<PhoneMountGuideScreen>
         );
         break;
       case TestStep.FINGER_TAPPING_GUIDE:
+        // 단독 finger tapping 테스트용 TestFlowService 생성
+        final testFlowService = TestFlowService(apiService: ApiService());
+        final userId = 'guest_${DateTime.now().millisecondsSinceEpoch}';
+        testFlowService.startNewTestSession(userId);
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const FingerTappingGuideScreen(),
+            builder: (context) => FingerTappingGuideScreen(
+              testFlowService: testFlowService,
+            ),
           ),
         );
         break;

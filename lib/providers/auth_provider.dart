@@ -81,38 +81,7 @@ class CustomAuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // 구글 로그인 (비활성화)
-  Future<void> signInWithGoogle() async {
-    _errorMessage = 'Google 로그인은 현재 지원되지 않습니다.';
-    notifyListeners();
-  }
 
-  // 회원가입
-  Future<void> createUserWithEmailAndPassword(String email, String password, String name) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      final result = await parasolAuth.register(
-        email: email,
-        password: password,
-        name: name,
-      );
-
-      if (result['success'] == true) {
-        // 회원가입 성공 - 자동 로그인 하지 않음
-        _errorMessage = null;
-      } else {
-        _errorMessage = result['error'];
-      }
-    } catch (e) {
-      _errorMessage = e.toString();
-    }
-
-    _isLoading = false;
-    notifyListeners();
-  }
 
   // 로그아웃
   Future<void> signOut() async {
@@ -127,12 +96,6 @@ class CustomAuthProvider with ChangeNotifier {
     }
 
     _isLoading = false;
-    notifyListeners();
-  }
-
-  // 비밀번호 재설정 (비활성화)
-  Future<void> sendPasswordResetEmail(String email) async {
-    _errorMessage = '비밀번호 재설정은 현재 지원되지 않습니다.';
     notifyListeners();
   }
 

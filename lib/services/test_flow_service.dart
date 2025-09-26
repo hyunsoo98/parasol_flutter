@@ -16,6 +16,11 @@ class TestFlowService {
   })  : _apiService = apiService,
         _serverCompatibility = ServerCompatibilityService(apiService);
 
+  // Getters
+  String? get currentSessionId => _currentSessionId;
+  String? get currentUserId => _currentUserId;
+  ApiService get apiService => _apiService;
+
   String startNewTestSession(String userId) {
     _currentSessionId = 'session_${DateTime.now().millisecondsSinceEpoch}_$userId';
     _currentUserId = userId;
@@ -81,8 +86,6 @@ class TestFlowService {
     }
   }
 
-  String? get currentSessionId => _currentSessionId;
-
   bool canStartFingerTapping() => _currentSessionId != null && _eyeTestResults != null;
   
   Map<String, dynamic>? getFingerTappingStartData() {
@@ -117,49 +120,6 @@ class TestFlowService {
     }
   }
 
-  /// 시선추적 검사 건너뛰기 기록
-  Future<Map<String, dynamic>> recordSkippedEyeTest(Map<String, dynamic> dummyData) async {
-    if (_currentSessionId == null || _currentUserId == null) {
-      return {'error': 'No active test session'};
-    }
-
-    try {
-      // 건너뛰기 상태를 기록
-      _eyeTestResults = {
-        'session_id': _currentSessionId!,
-        'user_id': _currentUserId!,
-        'skipped': true,
-        'test_type': 'eye_tracking_skipped',
-        'completed_at': DateTime.now().toIso8601String(),
-        'reason': 'user_skipped',
-        'dummy_data': dummyData,
-        'status': 'skipped',
-      };
-
-      // 서버에 건너뛰기 상태 전송 (선택적)
-      try {
-        await _apiService.recordSkippedTest({
-          'session_id': _currentSessionId!,
-          'user_id': _currentUserId!,
-          'test_type': 'eye_tracking',
-          'reason': 'user_requested_skip',
-          'timestamp': DateTime.now().toIso8601String(),
-        });
-      } catch (e) {
-        print('서버 기록 실패 (무시함): $e');
-        // 서버 전송 실패해도 로컬 상태는 유지
-      }
-
-      return {
-        'success': true,
-        'skipped': true,
-        'ready_for_finger_test': true,
-        'session_id': _currentSessionId,
-      };
-    } catch (e) {
-      return {'error': 'Failed to record skipped eye test: $e'};
-    }
-  }
 
   void endSession() {
     _currentSessionId = null;

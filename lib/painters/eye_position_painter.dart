@@ -17,7 +17,7 @@ class EyePositionPainter extends CustomPainter {
     final center = Offset(dx, dy);
 
     // 신뢰도/탐지 여부에 따라 색상
-    final active = faceDetected && confidence >= 0.5;
+    final active = faceDetected && confidence >= 0.3; // 얼굴 인식 기준 완화 (0.5→0.3)
     final color = active ? Colors.green : Colors.grey.withOpacity(0.5);
 
     // 포인트(동공 위치) 표시

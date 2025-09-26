@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'finger_tapping_screen.dart';
 
 class FingerTappingGuideScreen extends StatelessWidget {
-  const FingerTappingGuideScreen({Key? key}) : super(key: key);
+  final dynamic testFlowService;
+
+  const FingerTappingGuideScreen({Key? key, this.testFlowService}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +102,9 @@ class FingerTappingGuideScreen extends StatelessWidget {
                     Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const FingerTappingScreen(),
+                        builder: (context) => FingerTappingScreen(
+                          testFlowService: testFlowService,
+                        ),
                       ),
                     );
                   },

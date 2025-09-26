@@ -619,10 +619,26 @@ class _VoiceAnalysisScreenState extends State<VoiceAnalysisScreen> with TickerPr
   Future<void> _startRecording() async {
     try {
       if (!_isRecorderInitialized) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('녹음 권한이 필요합니다')),
-        );
-        return;
+        // 권한 재요청
+        bool hasPermission = await PermissionService.requestMicrophonePermission();
+        if (!hasPermission) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('마이크 권한이 필요합니다. 설정에서 권한을 허용해주세요.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+          return;
+        }
+
+        // 권한을 받았으면 다시 초기화
+        await _initializeRecorder();
+        if (!_isRecorderInitialized) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('녹음 기능을 사용할 수 없습니다.')),
+          );
+          return;
+        }
       }
 
       String filePath;

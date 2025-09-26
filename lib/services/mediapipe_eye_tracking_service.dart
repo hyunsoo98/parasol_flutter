@@ -202,7 +202,7 @@ class EyeTrackingResult {
     };
   }
 
-  bool get isValid => faceDetected && confidence > 0.3 && gazeCenter != null;
+  bool get isValid => faceDetected && confidence > 0.2 && gazeCenter != null; // 신뢰도 기준 완화 (0.3→0.2)
 }
 
 class EyePosition {

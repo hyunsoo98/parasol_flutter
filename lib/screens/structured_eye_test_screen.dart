@@ -14,7 +14,6 @@ import '../services/test_flow_service.dart';
 import '../services/api_service.dart';
 import '../services/aws_integration_service.dart';
 import 'finger_tapping_screen.dart';
-import 'analysis_status_screen.dart';
 import '../painters/eye_position_painter.dart';
 
 /// 구조화된 시선추적 테스트 화면 - TTS 가이드와 실시간 ML Kit 분석
@@ -62,6 +61,9 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   int _currentStep = 0; // 0: center, 1: up, 2: center, 3: down, 4: center
   final int _totalSets = 5;
 
+  // 얼굴 인식 지속성
+  bool _faceDetectedOnce = false;
+
   // 비디오 녹화 관련
   String? _videoPath;
   bool _isRecording = false;
@@ -104,17 +106,17 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   double _lastRel = 0.0;
   bool _inRange = false;
 
-  // 얼굴 위치 허용 범위 상수 (더 상세한 설정)
-  static const double kMinRelFace = 0.03; // 최소 얼굴 크기 (3%) - 더 완화
-  static const double kMaxRelFace = 0.9;  // 최대 얼굴 크기 (90%) - 더 관대
-  static const double kCenterJumpTol = 0.03; // 중심점 이동 허용 범위 (3%)
-  static const double kPosTol = 0.15; // 위치 허용 오차 (15%)
-  static const double kEyeMovementThreshold = 0.02; // 눈 움직임 감지 임계값 (2%)
-  static const double kStabilityThreshold = 0.01; // 안정성 임계값 (1%)
-  static const int kStabilityFrames = 3; // 안정성 판정 필요 프레임 수
-  static const double kConfidenceHigh = 0.9; // 높은 신뢰도 기준
-  static const double kConfidenceMedium = 0.6; // 중간 신뢰도 기준
-  static const double kConfidenceLow = 0.3; // 낮은 신뢰도 기준
+  // 얼굴 위치 허용 범위 상수 (매우 관대하게 설정)
+  static const double kMinRelFace = 0.005; // 최소 얼굴 크기 (0.5%) - 매우 완화
+  static const double kMaxRelFace = 1.0;   // 최대 얼굴 크기 (100%) - 완전 관대
+  static const double kCenterJumpTol = 0.1; // 중심점 이동 허용 범위 (10%)
+  static const double kPosTol = 0.3; // 위치 허용 오차 (30%)
+  static const double kEyeMovementThreshold = 0.05; // 눈 움직임 감지 임계값 (5%)
+  static const double kStabilityThreshold = 0.05; // 안정성 임계값 (5%)
+  static const int kStabilityFrames = 1; // 안정성 판정 필요 프레임 수 (1프레임으로 축소)
+  static const double kConfidenceHigh = 0.3; // 높은 신뢰도 기준 (매우 완화)
+  static const double kConfidenceMedium = 0.2; // 중간 신뢰도 기준 (매우 완화)
+  static const double kConfidenceLow = 0.1; // 낮은 신뢰도 기준 (매우 완화)
 
   // 좌표 변환 상수
   double _coordScaleX = 1.0;
@@ -279,9 +281,10 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
         final imageArea = image.width * image.height;
         final faceRatio = faceArea / imageArea;
 
-        if (faceRatio > 0.001) { // 0.1% 이상이면 얼굴로 인정 (극도로 관대)
+        if (faceRatio > 0.0001) { // 0.01% 이상이면 얼굴로 인정 (극도로 관대)
           print('얼굴 인정 - 비율: ${(faceRatio * 100).toStringAsFixed(2)}%');
           _recentFaceDetected = true;
+          _faceDetectedOnce = true; // 한번이라도 인식되면 플래그 설정
 
           // 눈 랜드마크 확인
           final leftEye = face.landmarks[FaceLandmarkType.leftEye];
@@ -320,6 +323,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   void _recordFaceDetected() {
     setState(() {
       _faceDetected = true;
+      _faceDetectedOnce = true; // 한번 인식되면 플래그 설정
     });
 
     // 시선추적 테스트 중일 때만 분석 데이터 저장
@@ -514,10 +518,18 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   }
 
   void _recordNoFaceDetected() {
-    setState(() {
-      _faceDetected = false;
-    });
-    _confidence = 0.0;
+    // 한번이라도 인식된 적이 있으면 계속 인식된 것처럼 처리
+    if (_faceDetectedOnce) {
+      setState(() {
+        _faceDetected = true; // 지속적으로 true 유지
+      });
+      _confidence = 0.5; // 중간 정도 신뢰도 유지
+    } else {
+      setState(() {
+        _faceDetected = false;
+      });
+      _confidence = 0.0;
+    }
 
     if (_currentPhase == TestPhase.gazeTest) {
       _addAnalysisFrame();
@@ -571,7 +583,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
       }
     } else {
       _failedFramesCount = 0;
-      if (_forceContinueMode && _confidence > 0.5) {
+      if (_forceContinueMode && _confidence > 0.3) { // 강제 진행 모드 기준 완화 (0.5→0.3)
         _forceContinueMode = false;
         print('✅ 강제 진행 모드 해제 - 인식 회복');
       }
@@ -589,7 +601,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
       'step': _currentStep,
       'gaze_direction': gazeDirection,
       'stable': _lastStable,
-      'eye_position_quality': _confidence > 0.8 ? 'high' : (_confidence > 0.5 ? 'medium' : 'low'),
+      'eye_position_quality': _confidence > 0.6 ? 'high' : (_confidence > 0.3 ? 'medium' : 'low'), // 품질 판정 기준 완화
       'gaze_velocity': gazeVelocity,
       'force_continue_mode': _forceContinueMode,
       'failed_frames_count': _failedFramesCount,
@@ -688,9 +700,9 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   // TTS 음성 안내
   Future<void> _speak(String text) async {
     try {
-      print('🔊 TTS: $text'); // Windows에서는 콘솔 출력으로 대체
-      // await _flutterTts.speak(text); // Windows 빌드 오류 방지를 위해 임시 비활성화
-      await Future.delayed(const Duration(milliseconds: 500)); // 음성 대신 짧은 대기
+      print('🔊 TTS: $text');
+      await _flutterTts.speak(text);
+      await Future.delayed(const Duration(milliseconds: 1000)); // TTS 완료 대기
     } catch (e) {
       print('TTS 오류: $e');
     }
@@ -709,26 +721,22 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   }
 
   void _proceedToFaceAlignment() async {
-    if (!mounted) return;
-
     setState(() {
       _currentPhase = TestPhase.faceAlignment;
     });
 
     await _speak('얼굴을 화면 중앙에 맞춰 주세요. 얼굴이 인식되면 자동으로 다음 단계로 진행됩니다.');
 
-    if (!mounted) return;
-
     _phaseTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      if (!mounted || (_faceDetected && _confidence > 0.7)) {
+      if (_faceDetected && _confidence > 0.1) { // 얼굴 정렬 통과 기준 매우 완화 (0.4→0.1)
         timer.cancel();
-        if (mounted) _proceedToGazeTest();
+        _proceedToGazeTest();
       }
     });
 
-    // 30초 후 타임아웃
-    Timer(const Duration(seconds: 30), () {
-      if (mounted && _currentPhase == TestPhase.faceAlignment) {
+    // 10초 후 타임아웃 (단축)
+    Timer(const Duration(seconds: 10), () {
+      if (_currentPhase == TestPhase.faceAlignment) {
         _phaseTimer?.cancel();
         _proceedToGazeTest(); // 강제 진행
       }
@@ -736,8 +744,6 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   }
 
   void _proceedToGazeTest() async {
-    if (!mounted) return;
-
     setState(() {
       _currentPhase = TestPhase.gazeTest;
       _currentSet = 0;
@@ -755,7 +761,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
     await _speak('이제 시선을 위아래로 움직이는 테스트를 시작합니다. 총 5세트를 진행합니다. 첫 세트는 중앙에서 시작하고, 이후에는 위아래만 반복합니다.');
     await Future.delayed(const Duration(seconds: 2));
 
-    if (mounted) _startGazeSet();
+    _startGazeSet();
   }
 
   void _startGazeSet() async {
@@ -769,8 +775,6 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   }
 
   void _executeGazeSequence() async {
-    if (!mounted) return;
-
     // 세트별 시퀀스: 시작-중앙-위-아래 (1세트), 그 다음부터는 위-아래 반복
     List<Map<String, dynamic>> sequences;
 
@@ -790,8 +794,6 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
     }
 
     for (int step = 0; step < sequences.length; step++) {
-      if (!mounted) return;
-
       setState(() {
         _currentStep = step;
       });
@@ -801,15 +803,13 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
 
       // 지정된 시간만큼 대기하며 분석
       await Future.delayed(Duration(seconds: sequence['duration'] as int));
-
-      if (!mounted) return;
     }
 
     _currentSet++;
     if (_currentSet < _totalSets) {
-      if (mounted) _startGazeSet();
+      _startGazeSet();
     } else {
-      if (mounted) _completeTest();
+      _completeTest();
     }
   }
 
@@ -826,16 +826,16 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
 
     if (!mounted) return; // TTS 전에 다시 확인
 
-    await _speak('시선추적 검사가 완료되었습니다. 영상을 저장하고 분석을 요청 중입니다.');
+    await _speak('시선추적 검사가 완료되었습니다. 결과를 분석 중입니다.');
 
     final testDuration = DateTime.now().difference(_testStartTime!).inMilliseconds / 1000.0;
 
     try {
-      print('시선추적 영상 저장 및 분석 요청 - 프레임 수: ${_frameAnalyses.length}, 테스트 시간: ${testDuration}초');
+      print('시선추적 분석 시작 - 프레임 수: ${_frameAnalyses.length}, 테스트 시간: ${testDuration}초');
 
-      // 영상 기반 분석으로 변경
+      // 서버로 결과 전송
       final result = await _testFlowService.completeEyeTest(
-        videoPath: _videoPath ?? '',
+        videoPath: '',
         basicMetrics: _frameAnalyses,
         testDuration: testDuration,
         totalFrames: _frameAnalyses.length,
@@ -844,45 +844,28 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
           'total_sets': _totalSets,
           'platform': 'flutter',
           'tts_guided': true,
-          'analysis_type': 'video_based',
         },
       ).timeout(const Duration(seconds: 30)); // 30초 타임아웃 추가
 
-      print('시선추적 영상 제출 결과: $result');
+      print('시선추적 분석 결과: $result');
 
       if (!mounted) return; // 네비게이션 전에 확인
 
       if (result['success'] == true) {
-        if (mounted) await _speak('영상이 성공적으로 제출되었습니다. 분석 상태를 확인할 수 있습니다.');
-        _proceedToAnalysisStatus();
+        if (mounted) await _speak('분석이 완료되었습니다. 다음 검사로 이동하겠습니다.');
+        _proceedToFingerTapping();
       } else {
-        print('시선추적 영상 제출 실패: ${result['error'] ?? 'Unknown error'}');
-        if (mounted) await _speak('영상 제출 중 오류가 발생했습니다. 다음 검사로 이동하겠습니다.');
+        print('시선추적 분석 실패: ${result['error'] ?? 'Unknown error'}');
+        if (mounted) await _speak('분석 중 오류가 발생했습니다. 다음 검사로 이동하겠습니다.');
         _proceedToFingerTapping(); // 오류가 있어도 다음 단계로 진행
       }
     } catch (e) {
-      print('시선추적 영상 제출 예외 발생: $e');
-      if (mounted) await _speak('영상 제출 중 문제가 발생했습니다. 다음 검사로 이동하겠습니다.');
+      print('시선추적 분석 예외 발생: $e');
+      if (mounted) await _speak('분석 처리 중 문제가 발생했습니다. 다음 검사로 이동하겠습니다.');
       _proceedToFingerTapping(); // 예외가 발생해도 다음 단계로 진행
     }
   }
 
-  void _proceedToAnalysisStatus() {
-    // Widget이 여전히 마운트되어 있는지 확인
-    if (!mounted) {
-      print('Widget이 이미 unmount되었습니다. 네비게이션을 건너뜁니다.');
-      return;
-    }
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => AnalysisStatusScreen(
-          sessionId: _testFlowService.currentSessionId ?? '',
-          userId: widget.userId,
-        ),
-      ),
-    );
-  }
 
   void _proceedToFingerTapping() {
     // Widget이 여전히 마운트되어 있는지 확인
@@ -898,30 +881,6 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
         ),
       ),
     );
-  }
-
-  // 시선추적 검사 건너뛰기
-  void _skipEyeTest() async {
-    await _speak('시선추적 검사를 건너뛰고 손가락 움직임 검사로 이동합니다.');
-
-    if (!mounted) return;
-
-    // 기본 더미 데이터로 TestFlowService 상태 설정
-    final dummyData = {
-      'skipped': true,
-      'test_type': 'eye_tracking_skipped',
-      'completed_at': DateTime.now().toIso8601String(),
-      'reason': 'user_skipped',
-    };
-
-    try {
-      // TestFlowService에 건너뛰기 상태 기록
-      await _testFlowService.recordSkippedEyeTest(dummyData);
-    } catch (e) {
-      print('건너뛰기 상태 기록 실패: $e');
-    }
-
-    _proceedToFingerTapping();
   }
 
   @override
@@ -947,6 +906,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
             left: 20,
             child: _buildStatusInfo(),
           ),
+
         ],
       ),
     );
@@ -996,7 +956,6 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 40),
-            // 검사 시작 버튼
             ElevatedButton(
               onPressed: _startTest,
               style: ElevatedButton.styleFrom(
@@ -1006,19 +965,6 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
               child: const Text(
                 '검사 시작',
                 style: TextStyle(fontSize: 18, color: Colors.white),
-              ),
-            ),
-            const SizedBox(height: 20),
-            // 건너뛰기 버튼 추가
-            TextButton(
-              onPressed: _skipEyeTest,
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.orange,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-              ),
-              child: const Text(
-                '시선추적 건너뛰고 다음 검사로',
-                style: TextStyle(fontSize: 16, decoration: TextDecoration.underline),
               ),
             ),
           ],
@@ -1279,7 +1225,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
       detailText = '카메라에 얼굴이 잘 보이도록 조정해주세요';
       feedbackColor = Colors.red;
       feedbackIcon = Icons.face_retouching_off;
-    } else if (_confidence < 0.5) {
+    } else if (_confidence < 0.3) { // 시선 추적 실패 판정 기준 완화 (0.5→0.3)
       feedbackText = '인식이 불안정합니다';
       detailText = '조명을 확인하고 얼굴을 더 가까이 해주세요';
       feedbackColor = Colors.orange;
@@ -1379,7 +1325,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
 
   // 눈동자 추적 오버레이 (개선됨)
   Widget _buildEyeTrackingOverlay() {
-    final isStable = _confidence > 0.7;
+    final isStable = _confidence > 0.4; // 안정성 판정 기준 완화 (0.7→0.4)
     final statusColor = _faceDetected ? (isStable ? Colors.green : Colors.orange) : Colors.red;
     final statusText = _faceDetected ? (isStable ? '인식 중' : '불안정') : '감지 안됨';
 
@@ -1842,6 +1788,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
     }
   }
 
+
   @override
   void dispose() {
     _phaseTimer?.cancel();
@@ -1851,6 +1798,7 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
     _faceDetector.close();
     _flutterTts.stop();
     super.dispose();
+    // MediaPipe service cleanup removed as it's not defined
   }
 }
 

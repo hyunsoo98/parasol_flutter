@@ -553,7 +553,7 @@ def handle_process_s3_file(request_data: Dict, user_id: str, analysis_id: str, h
                 'body': json.dumps({'error': 'Missing s3_key'})
             }
 
-        # S3에서 파일 다운로드
+        # S3에서 파일 다운로드ㅂ
         file_data = download_from_s3(s3_key)
         
         # 파일 타입에 따라 처리
