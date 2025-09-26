@@ -240,4 +240,72 @@ class ApiService {
       return false;
     }
   }
+
+  // --- 음성 분석 메서드 ---
+  Future<Map<String, dynamic>> predictSpeech(Map<String, dynamic> data) {
+    return submitVoiceAnalysisRequest(
+      userId: data['user_id'] ?? 'guest',
+      audioData: data['audio_data'] ?? data['fileData'] ?? '',
+      parameters: data,
+    );
+  }
+
+  // --- 손가락 태핑 분석 메서드 ---
+  Future<Map<String, dynamic>> predictFinger(Map<String, dynamic> data) {
+    return submitFingerTappingRequest(
+      userId: data['user_id'] ?? 'guest',
+      videoData: data['video_data'] ?? data['fileData'] ?? '',
+      parameters: data,
+    );
+  }
+
+  Future<Map<String, dynamic>> loadAndPredictLatestFinger() async {
+    // 최신 손가락 태핑 데이터를 로드하고 예측하는 메서드
+    // 임시로 빈 데이터로 예측 요청을 보냄
+    return predictFinger({
+      'user_id': 'temp-user-${DateTime.now().millisecondsSinceEpoch}',
+      'analysis_type': 'finger-tapping',
+      'load_latest': true,
+    });
+  }
+
+  // --- 실시간 시선 추적 메서드 ---
+  Future<Map<String, dynamic>> submitRealtimeEyeResults({
+    required String sessionId,
+    required String userId,
+    required Map<String, dynamic> analysisResults,
+    Map<String, dynamic>? metadata,
+  }) {
+    final combinedData = {
+      'session_id': sessionId,
+      'user_id': userId,
+      ...analysisResults,
+      if (metadata != null) ...metadata,
+    };
+    return submitVideoAnalysisRequest(
+      sessionId: sessionId,
+      userId: userId,
+      videoData: combinedData,
+    );
+  }
+
+  Future<Map<String, dynamic>> notifyEyeTestCompletion({
+    required String sessionId,
+    required String userId,
+    required Map<String, dynamic> eyeResults,
+  }) {
+    final data = {
+      'session_id': sessionId,
+      'user_id': userId,
+      'analysis_type': 'eye-tracking-completion',
+      'completed_at': DateTime.now().toIso8601String(),
+      'eye_results': eyeResults,
+    };
+    return post('/completion', data: data);
+  }
+
+  // --- 상태 확인 메서드 ---
+  Future<Map<String, dynamic>> getStatus(String sessionId) {
+    return get('/status', queryParams: {'session_id': sessionId});
+  }
 }
