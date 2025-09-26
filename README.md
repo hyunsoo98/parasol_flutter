@@ -71,6 +71,7 @@
   <tr>
     <th align="left">클라우드 / DB</th>
     <td>
+      <img src="https://img.shields.io/badge/Firebase_Admin-6.5.0-FFCA28?logo=firebase"/>
       <img src="https://img.shields.io/badge/boto3-%3E%3D1.34.0-232F3E?logo=awslambda&logoColor=white"/>
       <img src="https://img.shields.io/badge/botocore-%3E%3D1.34.0-232F3E?logo=amazonaws&logoColor=white"/>
       <img src="https://img.shields.io/badge/Requests-%3E%3D2.31.0-4A4A4A"/>
@@ -140,11 +141,11 @@
 
 ## ☁️AWS Cloud Architecture
 <p align="center">
-  <img width="700" height="862" alt="architecture-diagram" src="./image (15).png" />
+  <img width="700" height="862" alt="architecture-diagram" src="https://github.com/user-attachments/assets/cb17e6c7-6a5b-4731-bf0e-38564dcc1af6" />
 </p>
 
 > App에서 제공하는 모든 핵심 기능은 **AWS cloud platform** 을 사용했습니다.  
- - 시선 추적, 손가락 부딪치기, 음성 분석 데이터 수집은 **AWS EC2 worker**를 활용했습니다.
+ - 시선 추적, 손가락 부딪치기, 음성 분석 데이터 수집은 **AWS Lambda**를 활용했습니다.
  - 로그인, 데이터 저장, 모델 적용은 **AWS SQS**를 통해 수행합니다.
  - 수집된 데이터(음성, 손가락 부딪치기, 시선 추적) 및 결과 보고서는 **DynamoDB**에 저장되어 관리됩니다.
    
@@ -191,3 +192,41 @@
 - **MLP Branch**: 피치, 에너지 등 요약 통계적 특성을 보완적으로 활용  
 - 세 가지 브랜치가 **공간 패턴, 시간 동역학, 통계 지표**라는 서로 다른 단서를 학습하여 단일 브랜치 모델 대비 **견고성과 분별력**이 향상됩니다.  
 - 최종 출력은 **2-Layer MLP 분류 헤드**를 통해 **HC, MSA**으로 분류합니다.  
+
+
+# 🧠 Parasol 검사 결과 & 아파닥 챗봇
+
+본 프로젝트는 **파킨슨병 및 비정형 파킨슨 질환** 환자의 검사 결과를 시각화하고,  
+LLM 기반 보고서와 환자/가족 맞춤형 챗봇 **아파닥**을 제공하는 Streamlit 애플리케이션입니다.
+
+---
+
+## 🚀 주요 기능
+
+### 1. 검사 결과 시각화
+- HC, PD, PSP, MSA 4개 그룹의 위험도 확률 표시
+- 카드 형태의 직관적 UI
+- 도넛 차트(원형 그래프)를 통한 위험도 분포 시각화
+
+### 2. LLM 기반 보고서 생성
+- OpenAI GPT 모델(`gpt-4o-mini`)을 활용
+- JSON 검사 결과를 입력으로 받아 환자 가족에게 친절히 설명하는 보고서 생성
+- 생성된 보고서를 Streamlit UI에서 바로 확인 및 다운로드 가능
+
+### 3. 아파닥 챗봇
+- **말풍선 UI + 아바타 이미지**를 활용한 대화형 인터페이스
+- 환자 및 보호자의 질문에 실시간 답변 제공
+- FAQ 버튼을 통한 빠른 질의응답 기능 내장
+
+---
+
+## 📂 프로젝트 구조
+
+```bash
+parasol-project/
+│
+├── final_report_5.py        # Streamlit 메인 애플리케이션
+├── apadoc.png               # 아파닥 챗봇 아바타 이미지
+├── requirements.txt         # 의존성 패키지 목록
+├── .env                     # OpenAI API 키 보관 (git에 올리지 마세요)
+└── README.md                # 프로젝트 설명 문서
