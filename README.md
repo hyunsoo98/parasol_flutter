@@ -224,7 +224,7 @@ LLM 기반 보고서와 환자/가족 맞춤형 챗봇 **아파닥**을 제공�
 ```bash
 parasol-project/
 │
-├── final_report_5.py        # Streamlit 메인 애플리케이션
+├── final_report.py        # Streamlit 메인 애플리케이션
 ├── apadoc.png               # 아파닥 챗봇 아바타 이미지
 ├── requirements.txt         # 의존성 패키지 목록
 ├── .env                     # OpenAI API 키 보관 (git에 올리지 마세요)

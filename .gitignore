@@ -96,3 +96,5 @@ test_videos/
 *.pb
 *.tflite
 ml_models/
+# Local secrets (OpenAI API key etc.) — never commit
+.env
