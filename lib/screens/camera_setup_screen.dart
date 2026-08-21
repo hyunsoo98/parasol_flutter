@@ -12,6 +12,7 @@ import '../services/permission_service.dart';
 import '../services/mediapipe_api_service.dart';
 import 'structured_eye_test_screen.dart'; // API 연결 활성화
 import 'final_diagnosis_screen.dart';
+import 'camera_setup_screen_widgets.dart';
 
 class CameraSetupScreen extends StatefulWidget {
   const CameraSetupScreen({Key? key}) : super(key: key);
@@ -187,98 +188,29 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
   }
 
   Widget _buildGuideOverlay() {
-    return AnimatedBuilder(
-      animation: _pulseAnimation,
-      builder: (context, child) {
-        return CustomPaint(
-          painter: FaceGuidePainter(
-            scale: _pulseAnimation.value,
-            isCorrect: false, // 검출 없이 가이드만
-          ),
-        );
-      },
-    );
+    return CameraGuideOverlay(pulseAnimation: _pulseAnimation);
   }
 
   Widget _buildStatusPanel(bool canStart) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.7),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Text(
-            _statusMessage,
-            style: TextStyle(
-              color: _statusColor,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          if (!canStart)
-            const Text(
-              '잠시만요...',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-        ],
-      ),
+    return CameraStatusPanel(
+      canStart: canStart,
+      statusMessage: _statusMessage,
+      statusColor: _statusColor,
     );
   }
 
   Widget _buildBottomButton(bool canStart) {
-    final label =
-        _testStarted ? '테스트 완료' : (canStart ? '검사 시작' : '준비 중...');
-    final enabled = _testStarted || canStart;
-
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: enabled ? _proceedToNextStep : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: enabled ? Colors.green : Colors.grey,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: Text(
-          label,
-          style:
-              const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-      ),
+    return CameraBottomButton(
+      canStart: canStart,
+      testStarted: _testStarted,
+      onPressed: _proceedToNextStep,
     );
   }
 
   Widget _buildDirectionIndicator() {
-    return Positioned(
-      top: _currentDirection == '위' ? 150 : null,
-      bottom: _currentDirection == '아래' ? 150 : null,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: _feedbackColor.withOpacity(0.8),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-          ),
-          child: Icon(
-            _currentDirection == '위'
-                ? Icons.keyboard_arrow_up
-                : Icons.keyboard_arrow_down,
-            size: 50,
-            color: Colors.white,
-          ),
-        ),
-      ),
+    return CameraDirectionIndicator(
+      currentDirection: _currentDirection,
+      feedbackColor: _feedbackColor,
     );
   }
 
@@ -575,54 +507,5 @@ class _CameraSetupScreenState extends State<CameraSetupScreen>
 
     _pulseController.dispose();
     super.dispose();
-  }
-}
-
-// 얼굴 가이드만 그리는 페인터(검출 없음)
-class FaceGuidePainter extends CustomPainter {
-  final double scale;
-  final bool isCorrect;
-
-  FaceGuidePainter({required this.scale, required this.isCorrect});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..color = isCorrect ? Colors.green : Colors.white.withOpacity(0.8);
-
-    final center = Offset(size.width / 2, size.height / 2 - 50);
-    final ovalWidth = 200.0 * scale;
-    final ovalHeight = 250.0 * scale;
-
-    final oval =
-        Rect.fromCenter(center: center, width: ovalWidth, height: ovalHeight);
-    canvas.drawOval(oval, paint);
-
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: '얼굴을 이 영역에\n맞춰주세요',
-        style: TextStyle(
-          color: Colors.white.withOpacity(0.9),
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-    );
-
-    textPainter.layout();
-    textPainter.paint(
-      canvas,
-      Offset(center.dx - textPainter.width / 2,
-          center.dy + ovalHeight / 2 + 20),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant FaceGuidePainter oldDelegate) {
-    return oldDelegate.scale != scale || oldDelegate.isCorrect != isCorrect;
   }
 }
