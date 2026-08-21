@@ -14,7 +14,7 @@ import '../services/test_flow_service.dart';
 import '../services/api_service.dart';
 import '../services/aws_integration_service.dart';
 import 'finger_tapping_screen.dart';
-import '../painters/eye_position_painter.dart';
+import 'structured_eye_test_screen_widgets.dart';
 
 /// 구조화된 시선추적 테스트 화면 - TTS 가이드와 실시간 ML Kit 분석
 class StructuredEyeTestScreen extends StatefulWidget {
@@ -114,8 +114,6 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   static const double kEyeMovementThreshold = 0.05; // 눈 움직임 감지 임계값 (5%)
   static const double kStabilityThreshold = 0.05; // 안정성 임계값 (5%)
   static const int kStabilityFrames = 1; // 안정성 판정 필요 프레임 수 (1프레임으로 축소)
-  static const double kConfidenceHigh = 0.3; // 높은 신뢰도 기준 (매우 완화)
-  static const double kConfidenceMedium = 0.2; // 중간 신뢰도 기준 (매우 완화)
   static const double kConfidenceLow = 0.1; // 낮은 신뢰도 기준 (매우 완화)
 
   // 좌표 변환 상수
@@ -1214,219 +1212,26 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
 
   // 실시간 피드백 (개선됨)
   Widget _buildRealTimeFeedback(String gazeDirection) {
-    String feedbackText = '';
-    String detailText = '';
-    Color feedbackColor = Colors.white;
-    IconData feedbackIcon = Icons.info;
-
-    // 인식 상태에 따른 기본 정보
-    if (!_faceDetected) {
-      feedbackText = '얼굴을 화면에 맞춰주세요';
-      detailText = '카메라에 얼굴이 잘 보이도록 조정해주세요';
-      feedbackColor = Colors.red;
-      feedbackIcon = Icons.face_retouching_off;
-    } else if (_confidence < 0.3) { // 시선 추적 실패 판정 기준 완화 (0.5→0.3)
-      feedbackText = '인식이 불안정합니다';
-      detailText = '조명을 확인하고 얼굴을 더 가까이 해주세요';
-      feedbackColor = Colors.orange;
-      feedbackIcon = Icons.visibility_off;
-    } else {
-      // 시선 방향에 따른 피드백
-      final currentRange = _currentSetMaxY - _currentSetMinY;
-      final avgVelocity = _gazeVelocities.isNotEmpty ?
-          _gazeVelocities.reduce((a, b) => a + b) / _gazeVelocities.length : 0.0;
-
-      switch (gazeDirection) {
-        case 'looking_up':
-          feedbackText = '✓ 위쪽 시선 인식 중';
-          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 속도: ${(avgVelocity * 100).toStringAsFixed(1)}% | ${_forceContinueMode ? "강제진행" : "정상"}';
-          feedbackColor = Colors.green;
-          feedbackIcon = Icons.keyboard_arrow_up;
-          break;
-        case 'looking_down':
-          feedbackText = '✓ 아래쪽 시선 인식 중';
-          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 속도: ${(avgVelocity * 100).toStringAsFixed(1)}% | ${_forceContinueMode ? "강제진행" : "정상"}';
-          feedbackColor = Colors.green;
-          feedbackIcon = Icons.keyboard_arrow_down;
-          break;
-        case 'centered':
-          feedbackText = '✓ 중앙 시선 인식 중';
-          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 속도: ${(avgVelocity * 100).toStringAsFixed(1)}% | ${_forceContinueMode ? "강제진행" : "정상"}';
-          feedbackColor = Colors.green;
-          feedbackIcon = Icons.center_focus_strong;
-          break;
-        case 'not_following':
-          feedbackText = _forceContinueMode ? '⚠️ 강제 진행 중' : '⚠️ 지시된 방향을 봐주세요';
-          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 실패: ${_failedFramesCount}프레임';
-          feedbackColor = Colors.orange;
-          feedbackIcon = _forceContinueMode ? Icons.fast_forward : Icons.my_location;
-          break;
-        default:
-          feedbackText = _forceContinueMode ? '⚠️ 강제 진행 모드' : '눈동자 추적 중...';
-          detailText = 'Y위치: ${(_irisY * 100).toInt()}% | 범위: ${(currentRange * 100).toInt()}% | 신뢰도: ${(_confidence * 100).toInt()}%';
-          feedbackColor = _forceContinueMode ? Colors.red : Colors.blue;
-          feedbackIcon = _forceContinueMode ? Icons.warning : Icons.visibility;
-      }
-    }
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        color: feedbackColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: feedbackColor.withOpacity(0.3), width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: feedbackColor.withOpacity(0.2),
-            blurRadius: 8,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // 메인 피드백
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                feedbackIcon,
-                color: feedbackColor,
-                size: 20,
-              ),
-              SizedBox(width: 8),
-              Text(
-                feedbackText,
-                style: TextStyle(
-                  color: feedbackColor,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          // 상세 정보
-          if (detailText.isNotEmpty) ...[
-            SizedBox(height: 6),
-            Text(
-              detailText,
-              style: TextStyle(
-                color: feedbackColor.withOpacity(0.8),
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ],
-      ),
+    return EyeTestRealTimeFeedback(
+      faceDetected: _faceDetected,
+      confidence: _confidence,
+      currentSetMinY: _currentSetMinY,
+      currentSetMaxY: _currentSetMaxY,
+      gazeVelocities: _gazeVelocities,
+      forceContinueMode: _forceContinueMode,
+      irisY: _irisY,
+      failedFramesCount: _failedFramesCount,
+      gazeDirection: gazeDirection,
     );
   }
 
   // 눈동자 추적 오버레이 (개선됨)
   Widget _buildEyeTrackingOverlay() {
-    final isStable = _confidence > 0.4; // 안정성 판정 기준 완화 (0.7→0.4)
-    final statusColor = _faceDetected ? (isStable ? Colors.green : Colors.orange) : Colors.red;
-    final statusText = _faceDetected ? (isStable ? '인식 중' : '불안정') : '감지 안됨';
-
-    return Positioned(
-      right: 20,
-      bottom: 20,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // 실시간 상태 표시
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: statusColor.withOpacity(0.3),
-                  blurRadius: 8,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _faceDetected ? (isStable ? Icons.visibility : Icons.visibility_off) : Icons.face_retouching_off,
-                  color: Colors.white,
-                  size: 16,
-                ),
-                SizedBox(width: 6),
-                Text(
-                  statusText,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 8),
-
-          // 눈동자 위치 표시기
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: statusColor,
-                width: 3,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: statusColor.withOpacity(0.3),
-                  blurRadius: 10,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                // 배경 격자
-                CustomPaint(
-                  size: Size(120, 120),
-                  painter: _GridPainter(),
-                ),
-                // 눈동자 위치
-                CustomPaint(
-                  painter: EyePositionPainter(_irisX, _irisY, _confidence, _faceDetected),
-                ),
-                // 신뢰도 텍스트
-                if (_faceDetected)
-                  Positioned(
-                    bottom: 4,
-                    right: 4,
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${(_confidence * 100).toInt()}%',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return EyeTestTrackingOverlay(
+      confidence: _confidence,
+      faceDetected: _faceDetected,
+      irisX: _irisX,
+      irisY: _irisY,
     );
   }
 
@@ -1532,154 +1337,17 @@ class _StructuredEyeTestScreenState extends State<StructuredEyeTestScreen> {
   }
 
   Widget _buildStatusInfo() {
-    // 신뢰도에 따른 색상 결정
-    Color confidenceColor = Colors.red;
-    String confidenceText = 'Low';
-    if (_confidence >= kConfidenceHigh) {
-      confidenceColor = Colors.green;
-      confidenceText = 'High';
-    } else if (_confidence >= kConfidenceMedium) {
-      confidenceColor = Colors.orange;
-      confidenceText = 'Medium';
-    }
-
-    // 현재 시선 방향
-    String currentGaze = _getCurrentGazePhase();
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _faceDetected ? Colors.green.withOpacity(0.5) : Colors.red.withOpacity(0.5),
-          width: 2,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 세션 정보
-          Row(
-            children: [
-              Icon(Icons.fingerprint, color: Colors.blue, size: 16),
-              SizedBox(width: 4),
-              Text(
-                'Session: ${_sessionId?.substring(0, 8)}...',
-                style: const TextStyle(color: Colors.white, fontSize: 11),
-              ),
-            ],
-          ),
-          SizedBox(height: 6),
-
-          // 얼굴 감지 상태
-          Row(
-            children: [
-              Icon(
-                _faceDetected ? Icons.face : Icons.face_retouching_off,
-                color: _faceDetected ? Colors.green : Colors.red,
-                size: 16,
-              ),
-              SizedBox(width: 4),
-              Text(
-                'Face: ${_faceDetected ? 'Detected' : 'Not Found'}',
-                style: TextStyle(
-                  color: _faceDetected ? Colors.green : Colors.red,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 4),
-
-          // 눈동자 위치
-          Row(
-            children: [
-              Icon(Icons.visibility, color: Colors.blue, size: 16),
-              SizedBox(width: 4),
-              Text(
-                'Eye: (${_irisX.toStringAsFixed(2)}, ${_irisY.toStringAsFixed(2)})',
-                style: const TextStyle(color: Colors.white, fontSize: 11),
-              ),
-            ],
-          ),
-          SizedBox(height: 4),
-
-          // 신뢰도
-          Row(
-            children: [
-              Icon(Icons.speed, color: confidenceColor, size: 16),
-              SizedBox(width: 4),
-              Text(
-                'Quality: $confidenceText (${(_confidence * 100).toInt()}%)',
-                style: TextStyle(
-                  color: confidenceColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 4),
-
-          // 현재 단계
-          Row(
-            children: [
-              Icon(Icons.directions, color: Colors.yellow, size: 16),
-              SizedBox(width: 4),
-              Text(
-                'Phase: $currentGaze',
-                style: const TextStyle(color: Colors.yellow, fontSize: 11),
-              ),
-            ],
-          ),
-          SizedBox(height: 4),
-
-          // 세트 진행률
-          Row(
-            children: [
-              Icon(Icons.timeline, color: Colors.cyan, size: 16),
-              SizedBox(width: 4),
-              Text(
-                'Set: ${_currentSet + 1}/$_totalSets',
-                style: const TextStyle(color: Colors.cyan, fontSize: 11),
-              ),
-            ],
-          ),
-          SizedBox(height: 4),
-
-          // 프레임 수
-          Row(
-            children: [
-              Icon(Icons.camera_alt, color: Colors.purple, size: 16),
-              SizedBox(width: 4),
-              Text(
-                'Frames: ${_frameAnalyses.length}',
-                style: const TextStyle(color: Colors.purple, fontSize: 11),
-              ),
-            ],
-          ),
-          SizedBox(height: 6),
-
-          // 안정성 표시
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: _lastStable ? Colors.green.withOpacity(0.3) : Colors.red.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              _lastStable ? 'STABLE' : 'UNSTABLE',
-              style: TextStyle(
-                color: _lastStable ? Colors.green : Colors.red,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
+    return EyeTestStatusInfo(
+      confidence: _confidence,
+      sessionId: _sessionId,
+      faceDetected: _faceDetected,
+      irisX: _irisX,
+      irisY: _irisY,
+      currentGazePhase: _getCurrentGazePhase(),
+      currentSet: _currentSet,
+      totalSets: _totalSets,
+      frameCount: _frameAnalyses.length,
+      lastStable: _lastStable,
     );
   }
 
@@ -1807,43 +1475,4 @@ enum TestPhase {
   faceAlignment,
   gazeTest,
   completed,
-}
-
-// 격자 배경 그리기
-class _GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.1)
-      ..strokeWidth = 0.5;
-
-    // 세로선
-    for (int i = 1; i < 4; i++) {
-      final x = size.width * i / 4;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-
-    // 가로선
-    for (int i = 1; i < 4; i++) {
-      final y = size.height * i / 4;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-
-    // 중앙 십자선
-    paint.color = Colors.white.withOpacity(0.3);
-    paint.strokeWidth = 1.0;
-    canvas.drawLine(
-      Offset(size.width / 2, 0),
-      Offset(size.width / 2, size.height),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(0, size.height / 2),
-      Offset(size.width, size.height / 2),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
